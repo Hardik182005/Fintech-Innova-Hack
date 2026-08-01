@@ -1,4 +1,4 @@
-﻿# Module update: 1785581175-4
+﻿# Module update: 1785583968-0
 # Digital signature utilities
 import hashlib
 
