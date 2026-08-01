@@ -17,12 +17,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# Bumped whenever credit.rego and this mirror change semantics together, so a
+# stored decision can always be traced back to the rules that produced it.
+POLICY_VERSION = "credence.credit/v1"
+
 
 @dataclass
 class PolicyDecision:
     allow: bool
     deny: list[str] = field(default_factory=list)
     engine: str = "local"
+    policy_version: str = POLICY_VERSION
 
 
 def _get(doc: dict[str, Any], path: str) -> Any:

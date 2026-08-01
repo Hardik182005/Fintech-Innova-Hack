@@ -1,0 +1,5 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'asia-southeast1-docker.pkg.dev/innova-hack/credence/credence-inference:latest', '-f', 'inference.Dockerfile', '.']
+images:
+  - 'asia-southeast1-docker.pkg.dev/innova-hack/credence/credence-inference:latest'

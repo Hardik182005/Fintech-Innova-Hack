@@ -48,6 +48,14 @@ ignore = ["S101"]  # assert is fine in tests; src uses explicit raises
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "B"]
+# B008 forbids calls in argument defaults, but `Depends(...)`/`Query(...)` in
+# defaults *is* the FastAPI dependency-injection contract — the call is
+# evaluated once at import and consumed by the framework, not per request.
+"credence/api/**" = ["B008"]
+# Translated consent and disclosure strings are single literals in Devanagari,
+# Bengali, Tamil, Telugu and Kannada. Splitting them across lines would put
+# whitespace inside sentences that the numeric-parity check compares verbatim.
+"credence/localization/catalogs.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -12,12 +12,34 @@ import hashlib
 import json
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from credence.models import AuditEvent
+from credence.telemetry import current_request_id
 
 GENESIS_HASH = "0" * 64
+
+# Serialises appenders across sessions. Any stable 64-bit constant works; this
+# one spells "credence chain" to a debugger reading pg_locks.
+_CHAIN_LOCK_KEY = 0x63_72_65_64_63_68_61_69
+
+
+def _lock_chain(session: Session) -> None:
+    """Take a transaction-scoped exclusive lock on the chain head.
+
+    `_latest()` followed by an insert is a read-then-write on shared state: two
+    concurrent transactions can both read the same head and both append with the
+    same prev_hash, which is indistinguishable from tampering when the chain is
+    verified (observed live as a fork at one seq). Row locks cannot close this —
+    the row that needs locking is the one about to be inserted — so appenders
+    serialise on an advisory lock instead, released automatically at commit.
+
+    SQLite (the unit-test engine) runs single-writer already and has no advisory
+    locks, so only PostgreSQL takes one.
+    """
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _CHAIN_LOCK_KEY})
 
 
 def _canonical(payload: dict[str, Any]) -> str:
@@ -45,8 +67,13 @@ def append_audit_event(
     resource_id: str | None = None,
     request_id: str | None = None,
 ) -> AuditEvent:
+    if request_id is None:
+        # Correlation id of the HTTP request being served (set by the
+        # middleware in credence.api.app); None outside a request context.
+        request_id = current_request_id()
     payload_json = _canonical(payload)
     payload_hash = _sha256(payload_json)
+    _lock_chain(session)
     prev = _latest(session)
     prev_hash = prev.event_hash if prev is not None else GENESIS_HASH
     event_hash = _sha256(

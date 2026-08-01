@@ -49,6 +49,8 @@ class User(Base):
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
     email: Mapped[str] = mapped_column(String(320), unique=True)
     role: Mapped[str] = mapped_column(String(30), default="OWNER")
+    # Sandbox bearer-token auth: only the SHA-256 hash is stored (OIDC in P5).
+    api_token_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -182,3 +184,8 @@ class AuditEvent(Base):
     event_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     __table_args__ = (Index("ix_audit_org_seq", "organization_id", "seq"),)
+
+
+# Register the credit/task/vault tables on the same metadata. Import placed at
+# the bottom to avoid a circular import (finance_models imports _id/utcnow).
+from credence import finance_models  # noqa: E402,F401

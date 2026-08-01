@@ -69,9 +69,7 @@ def test_scenario_c_unapproved_vendor_blocked():
 
 
 def test_approved_vendor_wrong_purpose_blocked():
-    decision = evaluate_proposal(
-        make_vault(), make_proposal(purpose_code="ENTERTAINMENT"), now=NOW
-    )
+    decision = evaluate_proposal(make_vault(), make_proposal(purpose_code="ENTERTAINMENT"), now=NOW)
     assert not decision.allow
     assert ReasonCode.PURPOSE_MISMATCH in decision.reasons
 

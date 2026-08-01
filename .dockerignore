@@ -1,0 +1,23 @@
+# API image context. Everything not needed to run the service stays out —
+# smaller context, and no path for a secret or a test fixture into the image.
+.git
+.venv
+frontend
+infra
+docs
+tests
+contracts
+scripts
+activity
+models
+website-2.zip
+users.json
+.env
+.env.*
+*.log
+*.pem
+*.key
+__pycache__
+.pytest_cache
+.ruff_cache
+IC1*.pdf

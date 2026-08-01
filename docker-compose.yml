@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: credence   # local dev only — never a real secret
       POSTGRES_DB: credence
     ports:
-      - "5432:5432"
+      - "5440:5432"  # non-default host port: 5432/5433 are taken by other local projects
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

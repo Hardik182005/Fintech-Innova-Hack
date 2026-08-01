@@ -10,6 +10,7 @@ __pycache__/
 htmlcov/
 
 # Environment / secrets — never commit
+users.json
 .env
 .env.*
 !.env.example
@@ -18,12 +19,12 @@ htmlcov/
 *_sa.json
 service-account*.json
 
-# Terraform
-infra/terraform/**/.terraform/
-infra/terraform/**/*.tfstate
-infra/terraform/**/*.tfstate.backup
-infra/terraform/**/*.tfvars
-!infra/terraform/**/*.example.tfvars
+# Terraform (module lives at infra/; state and provider cache never commit)
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.example.tfvars
 
 # Foundry
 contracts/out/
@@ -35,6 +36,12 @@ contracts/broadcast/
 *.gguf
 models/
 
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+website-2.zip
+
 # OS / editor
 .DS_Store
 Thumbs.db
@@ -43,5 +50,7 @@ Thumbs.db
 auto_push.log
 users.json
 .user_index
+cloud-sql-proxy.exe
+
 
 

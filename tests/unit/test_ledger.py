@@ -1,5 +1,5 @@
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from credence.errors import ReasonCode
@@ -155,6 +155,13 @@ def test_reversal_corrects_without_mutation(session, accounts):
     assert reconcile(session) == {}
 
 
+# Unlike the other property tests in this suite, this one builds a fresh
+# in-memory SQLite database and creates the whole schema on every example, which
+# takes ~150-300ms depending on machine load. Hypothesis's 200ms default
+# deadline measures that setup cost, not the invariant under test, and fails
+# intermittently because of it. The invariant here is arithmetic — the trial
+# balance sums to zero — and is unaffected by how long the setup took.
+@settings(deadline=None)
 @given(
     amounts=st.lists(st.integers(min_value=1, max_value=10**9), min_size=1, max_size=8),
 )

@@ -1,0 +1,244 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-ink: #0f1115;
+  --color-ink-soft: #1b1d24;
+
+  --color-accent: #6d5cf6;
+  --color-accent-strong: #5a47ea;
+  --color-accent-soft: #efedff;
+
+  --color-warm: #ff8d3d;
+
+  --color-background: #ffffff;
+  --color-foreground: #0f1115;
+
+  /* ---- Product control-centre tokens ----
+     The console is a financial instrument, not a brochure. Colour carries
+     meaning here: it marks money at risk, a blocked payment, a broken chain.
+     The palette is deliberately narrow and low-chroma so that when something
+     does turn red, it means something. */
+
+  /* Navigation rail: near-black with a blue cast, so the white workspace beside
+     it reads as the subject and the rail as chrome. */
+  --color-nav: #0f1115;
+  --color-nav-raised: #191c23;
+  --color-nav-border: #262a33;
+  --color-nav-text: #9ba3b0;
+  --color-nav-text-strong: #ffffff;
+
+  /* Work surfaces */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f7f8fa;
+  --color-surface-sunken: #f1f3f6;
+  --color-line: #e4e7ec;
+  --color-line-soft: #eff1f4;
+
+  /* Type */
+  --color-body: #3f4654;
+  --color-muted: #6b7280;
+  --color-faint: #98a1af;
+
+  /* Semantics. Each has a text-weight and a wash for badges and rows. */
+  --color-positive: #0a7145;
+  --color-positive-wash: #e8f6ef;
+  --color-caution: #9a5b04;
+  --color-caution-wash: #fdf3e3;
+  --color-critical: #b3261e;
+  --color-critical-wash: #fdeceb;
+  --color-info: #1a56c4;
+  --color-info-wash: #eaf1fe;
+  --color-neutral: #4a5261;
+  --color-neutral-wash: #f2f4f7;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  color: var(--color-ink);
+}
+
+/* Thin, modern scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d4d4d4;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b8b8b8;
+}
+
+/* ---- Text helpers ---- */
+.text-balance {
+  text-wrap: balance;
+}
+.text-pretty {
+  text-wrap: pretty;
+}
+
+/* Figures must line up column-to-column, or a reader compares digit widths
+   instead of values. Applied to every amount, rate, count and hash. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Section eyebrow used above table and panel groups. */
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+/* Keyboard focus has to survive on both the white workspace and the dark rail. */
+:where(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---- Hero warm aurora gradient (sarvam-style) ---- */
+.hero-warm {
+  background:
+    radial-gradient(
+      62% 50% at 50% -6%,
+      rgba(255, 141, 61, 0.55) 0%,
+      rgba(255, 172, 112, 0.22) 38%,
+      transparent 64%
+    ),
+    radial-gradient(
+      55% 45% at 84% 20%,
+      rgba(150, 152, 255, 0.34) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      55% 45% at 14% 26%,
+      rgba(255, 196, 152, 0.42) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      75% 60% at 50% 92%,
+      rgba(188, 178, 255, 0.3) 0%,
+      transparent 72%
+    ),
+    linear-gradient(180deg, #fff4ec 0%, #f5f1ff 52%, #ffffff 92%);
+}
+
+/* ---- Decorative gradients ---- */
+.glow-accent {
+  background: radial-gradient(
+    50% 50% at 50% 0%,
+    color-mix(in srgb, var(--color-accent) 16%, transparent),
+    transparent 72%
+  );
+}
+.grid-faint {
+  background-image:
+    linear-gradient(to right, rgba(10, 10, 11, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(10, 10, 11, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+.grid-faint-dark {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+/* ---- Edge fade mask (logo marquee) ---- */
+.mask-fade-x {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 12%,
+    #000 88%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 12%,
+    #000 88%,
+    transparent
+  );
+}
+
+/* ---- Animations ---- */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.animate-marquee {
+  animation: marquee 38s linear infinite;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.delay-1 {
+  animation-delay: 0.08s;
+}
+.delay-2 {
+  animation-delay: 0.16s;
+}
+.delay-3 {
+  animation-delay: 0.24s;
+}
+.delay-4 {
+  animation-delay: 0.32s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-marquee,
+  .animate-fade-up {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -49,9 +49,7 @@ def test_reserve_replenished_before_owner():
 
 def test_negative_inputs_rejected():
     with pytest.raises(NegativeAmountError):
-        run_repayment_waterfall(
-            revenue_minor=-1, principal_outstanding_minor=0, fee_due_minor=0
-        )
+        run_repayment_waterfall(revenue_minor=-1, principal_outstanding_minor=0, fee_due_minor=0)
 
 
 @given(revenue=amounts, principal=amounts, fee=amounts, reserve=amounts)
