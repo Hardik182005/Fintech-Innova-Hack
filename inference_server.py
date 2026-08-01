@@ -27,12 +27,15 @@ is the only proof that weights are resident and the GPU path works.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import subprocess
+import tempfile
 import threading
 import time
+import urllib.parse
 from typing import Any
 
 import httpx
@@ -48,7 +51,13 @@ COMMIT_SHA = os.environ.get("CREDENCE_COMMIT_SHA", "unknown")
 CONTAINER_DIGEST = os.environ.get("CREDENCE_CONTAINER_DIGEST", "unknown")
 # Pinned artifact source (see docs). Empty means pull from the public registry.
 MODEL_GCS_URI = os.environ.get("CREDENCE_MODEL_GCS_URI", "").strip()
+# Digest of the model manifest as the Ollama runtime reports it. Identifies
+# *which model* is loaded.
 EXPECTED_DIGEST = os.environ.get("CREDENCE_MODEL_EXPECTED_DIGEST", "").strip()
+# sha256 of the artifact tar in the bucket. Identifies *which download*. These
+# are deliberately separate: they are different bytes and a single variable
+# compared against both can never satisfy more than one of them.
+ARTIFACT_SHA256 = os.environ.get("CREDENCE_MODEL_ARTIFACT_SHA256", "").strip()
 
 # Populated by _startup(); read by /readyz and /version.
 STATE: dict[str, Any] = {
@@ -137,43 +146,93 @@ def _pull_model() -> None:
         raise RuntimeError(f"model {MODEL} absent after pull reported success")
 
 
-def _pull_from_gcs() -> None:
-    """Restore a pinned model artifact from private GCS with checksum
-    verification, so a cold start does not depend on a mutable public
-    registry tag being reachable and unchanged."""
-    logger.info("restoring pinned model artifact from %s", MODEL_GCS_URI)
-    proc = subprocess.run(
-        ["gcloud", "storage", "cp", MODEL_GCS_URI, "/tmp/model-artifact.tar"],
-        capture_output=True,
-        text=True,
-        timeout=1800,
+def _metadata_access_token() -> str:
+    """OAuth token for the runtime service account, from the metadata server.
+
+    The image deliberately does not ship the gcloud SDK, so the download below
+    speaks to the JSON API directly. The service account holds only
+    roles/storage.objectViewer on the bucket: this path can read the pinned
+    artifact and cannot modify or replace it.
+    """
+    r = httpx.get(
+        "http://metadata.google.internal/computeMetadata/v1"
+        "/instance/service-accounts/default/token",
+        headers={"Metadata-Flavor": "Google"},
+        timeout=15,
     )
-    if proc.returncode != 0:
-        raise RuntimeError(f"pinned artifact download failed: {proc.stderr[:400]}")
+    r.raise_for_status()
+    return r.json()["access_token"]
 
-    if EXPECTED_DIGEST:
-        import hashlib
 
-        h = hashlib.sha256()
-        with open("/tmp/model-artifact.tar", "rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                h.update(chunk)
-        actual = h.hexdigest()
-        if actual != EXPECTED_DIGEST:
+def _pull_from_gcs() -> None:
+    """Restore the pinned model artifact from the private bucket, verifying its
+    checksum, so a cold start does not depend on a mutable public registry tag
+    remaining reachable and unchanged.
+
+    The tar is hashed while streaming to disk rather than in a second pass;
+    at ~15GB the re-read is pure cold-start latency on a metered GPU.
+    """
+    if not MODEL_GCS_URI.startswith("gs://"):
+        raise RuntimeError(f"CREDENCE_MODEL_GCS_URI must be a gs:// URI, got {MODEL_GCS_URI!r}")
+
+    bucket, _, obj = MODEL_GCS_URI[len("gs://") :].partition("/")
+    if not bucket or not obj:
+        raise RuntimeError(f"could not parse bucket/object from {MODEL_GCS_URI!r}")
+
+    url = (
+        f"https://storage.googleapis.com/storage/v1/b/{bucket}"
+        f"/o/{urllib.parse.quote(obj, safe='')}?alt=media"
+    )
+    logger.info("restoring pinned model artifact from %s", MODEL_GCS_URI)
+
+    tmp = os.path.join(tempfile.gettempdir(), "model-artifact.tar")
+    started = time.monotonic()
+    digest = hashlib.sha256()
+    written = 0
+    try:
+        with httpx.stream(
+            "GET",
+            url,
+            headers={"Authorization": f"Bearer {_metadata_access_token()}"},
+            timeout=httpx.Timeout(60.0, read=1800.0),
+            follow_redirects=True,
+        ) as r:
+            r.raise_for_status()
+            with open(tmp, "wb") as fh:
+                for chunk in r.iter_bytes(1 << 20):
+                    digest.update(chunk)
+                    fh.write(chunk)
+                    written += len(chunk)
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"pinned artifact download failed: {e}") from e
+
+    logger.info(
+        "downloaded %.2f GiB in %.1fs", written / (1 << 30), time.monotonic() - started
+    )
+
+    # An unverified artifact is never extracted: a wrong or truncated tar would
+    # otherwise become a silently different model behind a verified-looking tag.
+    if ARTIFACT_SHA256:
+        actual = digest.hexdigest()
+        if actual != ARTIFACT_SHA256:
+            os.remove(tmp)
             raise RuntimeError(
-                f"pinned artifact checksum mismatch: expected {EXPECTED_DIGEST}, got {actual}"
+                f"pinned artifact checksum mismatch: expected {ARTIFACT_SHA256}, got {actual}"
             )
         logger.info("pinned artifact checksum verified")
+    else:
+        logger.warning("CREDENCE_MODEL_ARTIFACT_SHA256 unset — artifact extracted unverified")
 
+    os.makedirs("/root/.ollama", exist_ok=True)
     proc = subprocess.run(
-        ["tar", "-xf", "/tmp/model-artifact.tar", "-C", "/root/.ollama"],
+        ["tar", "-xf", tmp, "-C", "/root/.ollama"],
         capture_output=True,
         text=True,
         timeout=1800,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"pinned artifact extract failed: {proc.stderr[:400]}")
-    os.remove("/tmp/model-artifact.tar")
+    os.remove(tmp)
 
 
 def _warmup() -> None:

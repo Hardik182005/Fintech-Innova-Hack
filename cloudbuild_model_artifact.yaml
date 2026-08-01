@@ -1,0 +1,79 @@
+# Bakes the pinned Mistral model into an immutable artifact in the private bucket.
+#
+# Cold start previously pulled ~15GB from registry.ollama.ai on every scale-from-
+# zero, because Cloud Run GPU instances keep no persistent disk. That is slow,
+# unbounded, and depends on a public registry staying available and unchanged.
+# This runs once, in-region, and publishes a checksummed tar the inference
+# service restores read-only.
+#
+# The build refuses to publish unless the pulled manifest hashes to the exact
+# digest we independently verified, so the artifact cannot silently become a
+# different model.
+substitutions:
+  _MODEL_REPO: 'mistral-small3.2'
+  _MODEL_TAG: '24b-instruct-2506-q4_K_M'
+  _EXPECTED_DIGEST: '5a408ab55df5c1b5cf46533c368813b30bf9e4d8fc39263bf2a3338cfa3b895b'
+  _BUCKET: 'gs://credence-models-625136990338'
+
+steps:
+  # Pull into a clean store so the tar contains exactly one model, then assert
+  # the manifest digest before anything leaves the builder.
+  - id: 'pull-and-verify'
+    name: 'ollama/ollama:latest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        export OLLAMA_HOST=127.0.0.1:11434
+        export OLLAMA_MODELS=/workspace/ollama/models
+        mkdir -p "$$OLLAMA_MODELS"
+
+        ollama serve &
+        for _ in $$(seq 1 60); do
+          if ollama list >/dev/null 2>&1; then break; fi
+          sleep 2
+        done
+        ollama list >/dev/null
+
+        echo "--- pulling ${_MODEL_REPO}:${_MODEL_TAG} ---"
+        ollama pull "${_MODEL_REPO}:${_MODEL_TAG}"
+
+        MANIFEST="$$OLLAMA_MODELS/manifests/registry.ollama.ai/library/${_MODEL_REPO}/${_MODEL_TAG}"
+        test -f "$$MANIFEST" || { echo "manifest missing at $$MANIFEST"; exit 1; }
+
+        ACTUAL="$$(sha256sum "$$MANIFEST" | cut -d' ' -f1)"
+        echo "manifest digest actual=$$ACTUAL expected=${_EXPECTED_DIGEST}"
+        if [ "$$ACTUAL" != "${_EXPECTED_DIGEST}" ]; then
+          echo "REFUSING TO PUBLISH: manifest digest does not match the pinned value"
+          exit 1
+        fi
+
+        # Relative to the store root, so the service extracts straight into
+        # /root/.ollama and Ollama finds models/blobs + models/manifests.
+        echo "--- packing ---"
+        tar -C /workspace/ollama -cf /workspace/model-artifact.tar models
+        sha256sum /workspace/model-artifact.tar | cut -d' ' -f1 > /workspace/model-artifact.sha256
+        echo "artifact sha256=$$(cat /workspace/model-artifact.sha256)"
+        ls -l /workspace/model-artifact.tar
+
+  # Digest-addressed path: publishing a different model cannot overwrite this one.
+  - id: 'publish'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        DEST="${_BUCKET}/${_MODEL_REPO}-${_MODEL_TAG}/${_EXPECTED_DIGEST}"
+        gcloud storage cp /workspace/model-artifact.tar    "$$DEST/models.tar"
+        gcloud storage cp /workspace/model-artifact.sha256 "$$DEST/models.tar.sha256"
+        echo "published $$DEST/models.tar"
+        gcloud storage ls -l "$$DEST/"
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 200
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '3600s'

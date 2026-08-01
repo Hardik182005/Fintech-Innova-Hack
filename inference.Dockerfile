@@ -12,6 +12,11 @@ ENV CREDENCE_PRIMARY_MODEL=mistral-small3.2:24b-instruct-2506-q4_K_M
 ENV OLLAMA_HOST=127.0.0.1:11434
 ENV OLLAMA_KEEP_ALIVE=-1
 ENV OLLAMA_MAX_LOADED_MODELS=1
+# 8K context. Ollama defaults to 4096, which silently truncates longer evidence
+# bundles rather than erroring - the analyst would score a task on a prompt it
+# never fully saw. Raising this costs KV-cache VRAM, which is why it is bounded
+# here and not left unset.
+ENV OLLAMA_CONTEXT_LENGTH=8192
 ENV PYTHONUNBUFFERED=1
 
 # Build-time provenance, surfaced by /version so a running revision can be
