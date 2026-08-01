@@ -26,3 +26,20 @@
 [2026-08-01 16:05:54] Starting auto-push check...
 [2026-08-01 16:09:29] Starting auto-push check...
 [2026-08-01 16:09:29] Selected contributor [1/3]: Hardik182005
+[main 3a4cd7c] auto: hourly update by @Hardik182005 (2026-08-01 16:09:29)
+ 16 files changed, 2063 insertions(+), 25 deletions(-)
+ create mode 100644 .python-version
+ create mode 100644 credence/api/__init__.py
+ create mode 100644 credence/api/app.py
+ create mode 100644 credence/policy/rego/credit.rego
+ create mode 100644 tests/unit/conftest.py
+ create mode 100644 tests/unit/test_audit_chain.py
+ create mode 100644 tests/unit/test_ledger.py
+ create mode 100644 tests/unit/test_money.py
+ create mode 100644 tests/unit/test_passport.py
+ create mode 100644 tests/unit/test_policy.py
+ create mode 100644 tests/unit/test_vault_rules.py
+ create mode 100644 tests/unit/test_waterfall.py
+ create mode 100644 uv.lock
+[2026-08-01 16:09:41] Starting auto-push check...
+[2026-08-01 16:09:41] Selected contributor [2/3]: 2005sahildeshmukh
