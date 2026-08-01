@@ -75,10 +75,18 @@ if ($StagedDiff) {
     git commit -m $CommitMsg | Out-File -FilePath $LogFile -Append -Encoding UTF8
     
     $env:GIT_TERMINAL_PROMPT = "0"
+    $PushSuccess = $false
+
     if ($Username -and $Token) {
         $AuthenticatedRemote = "https://${Username}:${Token}@github.com/Hardik182005/Fintech-Innova-Hack.git"
         $PushResult = git push $AuthenticatedRemote $Branch 2>&1
-    } else {
+        if ($LASTEXITCODE -eq 0) {
+            $PushSuccess = $true
+        }
+    }
+    
+    if (-not $PushSuccess) {
+        "[$Timestamp] Token push unavailable or failed; using default origin remote..." | Out-File -FilePath $LogFile -Append -Encoding UTF8
         $PushResult = git push origin $Branch 2>&1
     }
     
