@@ -1,0 +1,5 @@
+﻿# Module update: 1785581175-0
+# Core configuration defaults
+DEFAULT_TIMEOUT_SECONDS = 30
+MAX_RETRY_ATTEMPTS = 3
+BACKOFF_FACTOR = 1.5

@@ -10,11 +10,15 @@ from credence.models import AccountType, EntryDirection, JournalEntry, LedgerAcc
 
 @pytest.fixture
 def accounts(session):
+    specs = [
+        ("liquidity", "LENDER_LIQUIDITY", "Lender liquidity", AccountType.ASSET),
+        ("vault", "VAULT_AVAILABLE", "Task vault available", AccountType.LIABILITY),
+        ("receivable", "PRINCIPAL_RECEIVABLE", "Principal receivable", AccountType.ASSET),
+        ("escrow", "REVENUE_ESCROW", "Task revenue escrow", AccountType.LIABILITY),
+    ]
     accs = {
-        "liquidity": LedgerAccount(code="LENDER_LIQUIDITY", name="Lender liquidity", type=AccountType.ASSET),
-        "vault": LedgerAccount(code="VAULT_AVAILABLE", name="Task vault available", type=AccountType.LIABILITY),
-        "receivable": LedgerAccount(code="PRINCIPAL_RECEIVABLE", name="Principal receivable", type=AccountType.ASSET),
-        "escrow": LedgerAccount(code="REVENUE_ESCROW", name="Task revenue escrow", type=AccountType.LIABILITY),
+        key: LedgerAccount(code=code, name=name, type=acc_type)
+        for key, code, name, acc_type in specs
     }
     session.add_all(accs.values())
     session.flush()

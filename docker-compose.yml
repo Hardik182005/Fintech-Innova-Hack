@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16.6
+    environment:
+      POSTGRES_USER: credence
+      POSTGRES_PASSWORD: credence   # local dev only — never a real secret
+      POSTGRES_DB: credence
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U credence"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  opa:
+    image: openpolicyagent/opa:1.4.2
+    command: ["run", "--server", "--addr", "0.0.0.0:8181", "/policies"]
+    ports:
+      - "8181:8181"
+    volumes:
+      - ./credence/policy/rego:/policies:ro
+
+  api:
+    build: .
+    profiles: ["api"]   # opt-in: `docker compose --profile api up`
+    environment:
+      CREDENCE_DATABASE_URL: postgresql+psycopg://credence:credence@postgres:5432/credence
+      CREDENCE_OPA_URL: http://opa:8181
+      CREDENCE_RUN_MODE: LOCAL_DEV
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
