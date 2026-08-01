@@ -821,19 +821,33 @@ def system_intelligence(
         service_health.append(_health_row("opa", "down", type(e).__name__))
 
     if provider == "ollama":
-        try:
-            tags = httpx.get(
-                f"{settings.ollama_base_url.rstrip('/')}/api/tags",
-                timeout=PROBE_TIMEOUT_SECONDS,
-            )
-            if tags.status_code == 200:
-                service_health.append(_health_row("model_runtime", "healthy", "ollama"))
-            else:
-                service_health.append(
-                    _health_row("model_runtime", "degraded", f"HTTP {tags.status_code}")
+        # Derived from real calls, not from a synthetic probe. Two reasons:
+        # the previous probe was unauthenticated, so against the IAM-protected
+        # inference service it could only ever return 403 and report a working
+        # runtime as permanently degraded; and any request at all would wake a
+        # 24B model onto an L4 every time this page renders, because the GPU
+        # service scales to zero. The last real inference is the honest signal.
+        latest = max(llm_runs, key=lambda r: _aware(r.created_at), default=None)
+        if latest is None:
+            service_health.append(
+                _health_row(
+                    "model_runtime",
+                    "idle",
+                    "no inference call in window; the GPU is not woken for health checks",
                 )
-        except httpx.HTTPError as e:
-            service_health.append(_health_row("model_runtime", "down", type(e).__name__))
+            )
+        elif latest.schema_valid:
+            service_health.append(
+                _health_row(
+                    "model_runtime",
+                    "healthy",
+                    f"last {latest.role} call returned valid structured output",
+                )
+            )
+        else:
+            service_health.append(
+                _health_row("model_runtime", "degraded", f"last {latest.role} call failed closed")
+            )
     elif provider == "fixture":
         # The fixture gateway is in-process code, not a network runtime; being
         # able to construct it in this very process is the probe.

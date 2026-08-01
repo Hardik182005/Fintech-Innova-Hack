@@ -9,6 +9,7 @@ from holding API workers open on 120-second timeouts.
 
 from __future__ import annotations
 
+import builtins
 import json
 
 import httpx
@@ -19,7 +20,12 @@ from credence.modelgw.gateway import (
     ModelUnavailableError,
     OllamaGateway,
     _CircuitBreaker,
+    mint_identity_token,
 )
+
+# Minimal schema-valid TaskAnalysis, so a test about auth headers fails on the
+# headers rather than on output validation.
+_ANALYSIS = {"summary": "s", "claims": [], "missing_evidence": [], "risk_flags": []}
 
 
 def _settings(**kw) -> Settings:
@@ -169,3 +175,70 @@ def test_oidc_minting_failure_never_downgrades_to_anonymous(monkeypatch):
     with pytest.raises(ModelUnavailableError, match="OIDC"):
         gw.analyze_task("t", {"ev_1": "text"})
     assert not sent["called"]
+
+
+# --- OIDC minting ----------------------------------------------------------
+#
+# The test above only ever asserted that a *failed* mint fails closed, and a
+# mint always fails on a developer machine because there is no metadata
+# server. So it passed identically whether the minting code worked or raised
+# ModuleNotFoundError on an undeclared import — which is exactly what it did in
+# Cloud Run, turning every deployed inference call into a silent human-review
+# escalation with no outbound request to show for it. These pin the success
+# path and the dependency.
+
+
+def _metadata_ok(token: str = "header.payload.signature"):
+    def _get(url, *a, **kw):
+        assert "metadata" in url, f"identity token must come from the metadata server, got {url}"
+        assert kw["headers"]["Metadata-Flavor"] == "Google"
+        return httpx.Response(200, text=token, request=httpx.Request("GET", url))
+
+    return _get
+
+
+def test_minted_token_is_attached_to_the_inference_call(monkeypatch):
+    captured: dict = {}
+
+    def _post(url, *a, **kw):
+        captured["headers"] = kw.get("headers") or {}
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(_ANALYSIS)}},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "get", _metadata_ok())
+    monkeypatch.setattr(httpx, "post", _post)
+
+    OllamaGateway(_settings(inference_use_oidc=True)).analyze_task("t", {"ev_1": "text"})
+
+    assert captured["headers"]["Authorization"] == "Bearer header.payload.signature"
+
+
+def test_minting_does_not_depend_on_the_requests_package(monkeypatch):
+    """`requests` is not a declared runtime dependency — every HTTP call in
+    this project uses httpx. It resolves on a developer machine only through
+    the dev group, so an import of it here is invisible until the container
+    runs. Blocking it reproduces the runtime image."""
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name == "requests" or name.startswith("requests."):
+            raise ModuleNotFoundError("No module named 'requests'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    monkeypatch.setattr(httpx, "get", _metadata_ok())
+
+    assert mint_identity_token("https://inference.invalid") == "header.payload.signature"
+
+
+def test_empty_token_is_not_treated_as_a_credential(monkeypatch):
+    """A blank 200 would otherwise produce `Authorization: Bearer `, which
+    Cloud Run rejects — the same fail-closed outcome, but reported as a model
+    fault rather than an auth fault."""
+    monkeypatch.setattr(httpx, "get", _metadata_ok(token="   "))
+
+    with pytest.raises(RuntimeError, match="empty identity token"):
+        mint_identity_token("https://inference.invalid")

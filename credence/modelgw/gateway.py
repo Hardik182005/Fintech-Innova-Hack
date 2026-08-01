@@ -36,6 +36,46 @@ class ModelUnavailableError(CredenceError):
         super().__init__(ReasonCode.MODEL_OUTPUT_INVALID, detail)
 
 
+_METADATA_IDENTITY_URL = (
+    "http://metadata.google.internal/computeMetadata/v1/instance/"
+    "service-accounts/default/identity"
+)
+
+# The metadata server is a link-local service on the instance itself: it either
+# answers in milliseconds or is not there at all. A long timeout here would
+# only delay the fail-closed path.
+_METADATA_TIMEOUT_SECONDS = 5.0
+
+
+def mint_identity_token(audience: str) -> str:
+    """Fetch a Google-signed OIDC identity token for `audience` from the
+    instance metadata server.
+
+    google-auth's `fetch_id_token` would do this too, but it reaches the
+    metadata server through `google.auth.transport.requests`, which imports
+    `requests`. Nothing in this project declares `requests` — every other HTTP
+    call uses httpx — so it resolved locally through the dev group and was
+    absent from the runtime image. In Cloud Run the import raised
+    ModuleNotFoundError, so every model call failed closed before a single byte
+    left the API, with no outbound request to show for it. Talking to the
+    metadata server directly removes the dependency question entirely; the
+    inference supervisor already fetches its access token the same way.
+
+    Raises on any failure. Callers decide whether that is fatal.
+    """
+    response = httpx.get(
+        _METADATA_IDENTITY_URL,
+        params={"audience": audience},
+        headers={"Metadata-Flavor": "Google"},
+        timeout=_METADATA_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    token = response.text.strip()
+    if not token:
+        raise RuntimeError("metadata server returned an empty identity token")
+    return token
+
+
 class _CircuitBreaker:
     """Trips after N consecutive failures and stays open for a cooldown.
 
@@ -294,12 +334,7 @@ class OllamaGateway:
         if not self._use_oidc:
             return {}
         try:
-            import google.auth.transport.requests
-            import google.oauth2.id_token
-
-            request = google.auth.transport.requests.Request()
-            token = google.oauth2.id_token.fetch_id_token(request, self._base)
-            return {"Authorization": f"Bearer {token}"}
+            return {"Authorization": f"Bearer {mint_identity_token(self._base)}"}
         except Exception as e:
             raise ModelUnavailableError(
                 f"could not mint OIDC token for inference: {type(e).__name__}"

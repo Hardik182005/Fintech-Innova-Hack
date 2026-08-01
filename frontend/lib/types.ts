@@ -713,7 +713,7 @@ export type AssuranceComponents = {
 
 export type ServiceHealthComponent = "api" | "database" | "opa" | "model_runtime";
 
-export type ServiceHealthStatus = "healthy" | "degraded" | "down" | "not_connected";
+export type ServiceHealthStatus = "healthy" | "degraded" | "down" | "idle" | "not_connected";
 
 export type ServiceHealthEntry = {
   component: ServiceHealthComponent;

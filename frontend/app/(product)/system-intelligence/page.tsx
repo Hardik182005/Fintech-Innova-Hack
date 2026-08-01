@@ -101,6 +101,7 @@ const HEALTH_TONE: Record<ServiceHealthStatus, BadgeTone> = {
   healthy: "positive",
   degraded: "caution",
   down: "critical",
+  idle: "outline",
   not_connected: "outline",
 };
 
@@ -108,6 +109,7 @@ const HEALTH_LABEL: Record<ServiceHealthStatus, string> = {
   healthy: "Healthy",
   degraded: "Degraded",
   down: "Down",
+  idle: "Idle",
   not_connected: "Not connected",
 };
 
@@ -451,7 +453,10 @@ function rollupHealth(entries: ServiceHealthEntry[]): {
   if (entries.some((e) => e.status === "degraded")) {
     return { label: "Degraded", textClass: "text-caution", icon: null, healthyCount };
   }
-  if (entries.some((e) => e.status === "not_connected")) {
+  // "idle" is not a fault, but it is not a green light either: the component
+  // simply has not been exercised in this window, so it must not be folded
+  // into "All healthy".
+  if (entries.some((e) => e.status === "not_connected" || e.status === "idle")) {
     return { label: "Partial telemetry", textClass: "text-muted", icon: null, healthyCount };
   }
   return {
