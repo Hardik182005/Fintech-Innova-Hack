@@ -1,0 +1,64 @@
+"""Canonical error/decision reason codes.
+
+These codes are part of the frontend contract and the audit trail; add new
+codes rather than renaming existing ones.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class ReasonCode(StrEnum):
+    # Identity
+    AGENT_IDENTITY_INVALID = "AGENT_IDENTITY_INVALID"
+    AUTHORIZATION_EXPIRED = "AUTHORIZATION_EXPIRED"
+    PASSPORT_REVOKED = "PASSPORT_REVOKED"
+    PASSPORT_NOT_YET_VALID = "PASSPORT_NOT_YET_VALID"
+    NONCE_REPLAYED = "NONCE_REPLAYED"
+    AUDIENCE_MISMATCH = "AUDIENCE_MISMATCH"
+    ISSUER_UNKNOWN = "ISSUER_UNKNOWN"
+    SCOPE_MISSING = "SCOPE_MISSING"
+
+    # Evidence / model
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+    MODEL_OUTPUT_INVALID = "MODEL_OUTPUT_INVALID"
+    EVIDENCE_NOT_FOUND = "EVIDENCE_NOT_FOUND"
+    CROSS_TENANT_EVIDENCE = "CROSS_TENANT_EVIDENCE"
+
+    # Policy engine
+    POLICY_ENGINE_UNAVAILABLE = "POLICY_ENGINE_UNAVAILABLE"
+    POLICY_DENIED = "POLICY_DENIED"
+
+    # Vault / transaction
+    AGENT_FROZEN = "AGENT_FROZEN"
+    VAULT_FROZEN = "VAULT_FROZEN"
+    VAULT_EXPIRED = "VAULT_EXPIRED"
+    VAULT_CLOSED = "VAULT_CLOSED"
+    VENDOR_NOT_ALLOWED = "VENDOR_NOT_ALLOWED"
+    PURPOSE_MISMATCH = "PURPOSE_MISMATCH"
+    CURRENCY_MISMATCH = "CURRENCY_MISMATCH"
+    TRANSACTION_LIMIT_EXCEEDED = "TRANSACTION_LIMIT_EXCEEDED"
+    TASK_LIMIT_EXCEEDED = "TASK_LIMIT_EXCEEDED"
+    DAILY_LIMIT_EXCEEDED = "DAILY_LIMIT_EXCEEDED"
+    TXN_COUNT_EXCEEDED = "TXN_COUNT_EXCEEDED"
+    VELOCITY_EXCEEDED = "VELOCITY_EXCEEDED"
+    SPLIT_PATTERN_DETECTED = "SPLIT_PATTERN_DETECTED"
+    IDEMPOTENCY_KEY_REQUIRED = "IDEMPOTENCY_KEY_REQUIRED"
+    DUPLICATE_REQUEST = "DUPLICATE_REQUEST"
+
+    # Ledger
+    LEDGER_IMBALANCE = "LEDGER_IMBALANCE"
+    IMMUTABLE_RECORD = "IMMUTABLE_RECORD"
+
+    # Review
+    HUMAN_REVIEW_REQUIRED = "HUMAN_REVIEW_REQUIRED"
+
+
+class CredenceError(Exception):
+    """Base application error carrying a canonical reason code."""
+
+    def __init__(self, code: ReasonCode, detail: str = ""):
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}" if detail else str(code))
