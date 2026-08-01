@@ -7,8 +7,12 @@ $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
 "[$Timestamp] Starting auto-push check..." | Out-File -FilePath $LogFile -Append -Encoding UTF8
 
+$Branch = (git branch --show-current).Trim()
+if ([string]::IsNullOrWhiteSpace($Branch)) {
+    $Branch = "main"
+}
+
 # Ensure untracked or modified files are staged
-# If repo is completely clean, update AUTO_ACTIVITY.md to ensure something gets committed & pushed every hour
 $Status = git status --porcelain
 if ([string]::IsNullOrWhiteSpace($Status)) {
     $ActivityFile = Join-Path $RepoDir "AUTO_ACTIVITY.md"
@@ -22,8 +26,8 @@ $StagedDiff = git diff --cached --name-only
 if ($StagedDiff) {
     $CommitMsg = "auto: hourly update ($Timestamp)"
     git commit -m $CommitMsg | Out-File -FilePath $LogFile -Append -Encoding UTF8
-    $PushResult = git push origin main 2>&1
-    "[$Timestamp] Push result: $PushResult" | Out-File -FilePath $LogFile -Append -Encoding UTF8
+    $PushResult = git push origin $Branch 2>&1
+    "[$Timestamp] Push result for branch '$Branch': $PushResult" | Out-File -FilePath $LogFile -Append -Encoding UTF8
 } else {
     "[$Timestamp] No changes detected to commit." | Out-File -FilePath $LogFile -Append -Encoding UTF8
 }

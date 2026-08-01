@@ -1,0 +1,56 @@
+[project]
+name = "credence"
+version = "0.1.0"
+description = "CredenceAI — task-backed credit infrastructure for autonomous agents (Innova Hack PS1, sandbox/test credits only)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<0.120",
+    "uvicorn[standard]>=0.32,<0.40",
+    "pydantic>=2.9,<3.0",
+    "pydantic-settings>=2.6,<3.0",
+    "sqlalchemy>=2.0.36,<2.1",
+    "alembic>=1.14,<2.0",
+    "cryptography>=44.0,<47.0",
+    "httpx>=0.27,<1.0",
+    "psycopg[binary]>=3.2,<4.0",
+    "structlog>=24.4,<26.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9.0",
+    "pytest-asyncio>=0.24,<2.0",
+    "hypothesis>=6.115,<7.0",
+    "ruff>=0.8,<1.0",
+    "mypy>=1.13,<2.0",
+    "bandit>=1.8,<2.0",
+    "pip-audit>=2.7,<3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["credence"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"]  # assert is fine in tests; src uses explicit raises
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+check_untyped_defs = true
+warn_unused_ignores = true
