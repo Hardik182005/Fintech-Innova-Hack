@@ -29,15 +29,15 @@ const COMPONENTS = [
   {
     icon: Cpu,
     title: "Private GPU Inference Engine",
-    desc: "Schema-constrained local inference serving mistral-small3.2:24b-instruct-2506-q4_K_M on a private Cloud Run NVIDIA L4 GPU service.",
-    tags: ["NVIDIA L4 GPU", "Mistral 24B", "Schema-constrained"],
+    desc: "A private Cloud Run NVIDIA L4 GPU service (credence-inference) is deployed for schema-constrained local inference. Model verification pending — the serving model is not yet independently verified, and underwriting currently runs on the deterministic engine.",
+    tags: ["NVIDIA L4 GPU", "Model verification pending", "Schema-constrained"],
   },
 ];
 
 const GCP = [
   "Google Cloud Run for API (credence-api) & Web Frontend (credence-web)",
   "Cloud SQL PostgreSQL instance (credence-pg) on Private IP with pgvector",
-  "Cloud Run NVIDIA L4 GPU Service (credence-inference) with Mistral 24B",
+  "Cloud Run NVIDIA L4 GPU Service (credence-inference) — model verification pending",
   "Cloud KMS asymmetric key rings for passport signing and evidence encryption",
 ];
 
