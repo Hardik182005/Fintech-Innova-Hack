@@ -41,4 +41,7 @@ Thumbs.db
 .idea/
 .vscode/
 auto_push.log
+users.json
+.user_index
+
 
