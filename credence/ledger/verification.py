@@ -1,4 +1,4 @@
-﻿# Module update: 1785593811-3
+﻿# Module update: 1785594770-6
 # Ledger transaction verification helper
 def verify_transaction_payload(payload: dict) -> bool:
     """Verify transaction payload structure and required fields."""
