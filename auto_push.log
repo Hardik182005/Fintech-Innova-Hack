@@ -12,3 +12,11 @@
  create mode 100644 credence/money.py
  create mode 100644 pyproject.toml
 [2026-08-01 16:02:59] Starting auto-push check...
+[feat/backend-foundation 35c80d5] auto: hourly update (2026-08-01 16:02:59)
+ 7 files changed, 265 insertions(+)
+ create mode 100644 credence/config.py
+ create mode 100644 credence/errors.py
+ create mode 100644 credence/passport/__init__.py
+ create mode 100644 credence/passport/keys.py
+ create mode 100644 credence/passport/schemas.py
+ create mode 100644 setup_task.ps1
