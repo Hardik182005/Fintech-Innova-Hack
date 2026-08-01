@@ -14,12 +14,16 @@ import json
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from credence.config import Settings
 from credence.modelgw.gateway import (
     ModelUnavailableError,
     OllamaGateway,
+    RiskOpinion,
+    TaskAnalysis,
     _CircuitBreaker,
+    grammar_schema,
     mint_identity_token,
 )
 
@@ -132,7 +136,11 @@ def test_repeated_failures_open_the_breaker_and_short_circuit(monkeypatch):
 
     monkeypatch.setattr(httpx, "post", boom)
     gw = OllamaGateway(
-        _settings(model_max_retries=0, model_circuit_fail_threshold=2, model_circuit_reset_seconds=60)
+        _settings(
+            model_max_retries=0,
+            model_circuit_fail_threshold=2,
+            model_circuit_reset_seconds=60,
+        )
     )
 
     for _ in range(2):
@@ -232,6 +240,45 @@ def test_minting_does_not_depend_on_the_requests_package(monkeypatch):
     monkeypatch.setattr(httpx, "get", _metadata_ok())
 
     assert mint_identity_token("https://inference.invalid") == "header.payload.signature"
+
+
+# --- constrained-decoding schema -------------------------------------------
+#
+# Ollama turns the schema we send into a GBNF grammar. A `maxLength: 2000`
+# expands to 2000 repeated character rules; llama.cpp rejects the grammar and
+# answers 400, so every analyst call failed closed to human review while
+# looking like a model outage. Nothing caught it locally because the fixture
+# gateway never compiles a grammar.
+
+
+@pytest.mark.parametrize("model", [TaskAnalysis, RiskOpinion])
+def test_no_length_bounds_reach_the_grammar(model):
+    def walk(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                assert k not in ("maxLength", "minLength"), f"{k} would blow up the GBNF grammar"
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(grammar_schema(model))
+
+
+@pytest.mark.parametrize("model", [TaskAnalysis, RiskOpinion])
+def test_structure_survives_the_strip(model):
+    """Only the length keywords go. The field set, required list and enum
+    patterns are what actually constrain the decode."""
+    schema = grammar_schema(model)
+    assert set(schema["properties"]) == set(model.model_json_schema()["properties"])
+    assert schema.get("required") == model.model_json_schema().get("required")
+
+
+def test_length_is_still_enforced_on_the_response():
+    """Stripping the bound from the grammar must not weaken validation: the
+    application, not the decoder, is what keeps an over-long summary out."""
+    with pytest.raises(ValidationError):
+        TaskAnalysis.model_validate({**_ANALYSIS, "summary": "x" * 2001})
 
 
 def test_empty_token_is_not_treated_as_a_credential(monkeypatch):

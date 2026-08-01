@@ -20,7 +20,7 @@ import logging
 import re
 import threading
 import time
-from typing import Protocol
+from typing import Protocol, cast
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -161,6 +161,32 @@ class RiskOpinion(BaseModel):
     rationale: str = Field(max_length=2000)
     concerns: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
+
+
+def grammar_schema(model: type[BaseModel]) -> dict:
+    """JSON schema for constrained decoding, with string length bounds removed.
+
+    Ollama compiles the schema into a GBNF grammar, and a `maxLength: N` on a
+    string becomes N repeated character rules. llama.cpp refuses to build such
+    a grammar ("number of rules that are going to be repeated ... exceeds sane
+    defaults") and returns 400, which fails the whole call closed — so a bound
+    meant as a cheap guard silently disabled inference entirely.
+
+    Dropping the bound from the grammar costs nothing real: length is not a
+    structural property the decoder needs, output is already capped by
+    num_predict, and `model_validate` still enforces max_length on the way in.
+    An over-long summary therefore fails closed at validation, exactly as
+    before.
+    """
+
+    def strip(node: object) -> object:
+        if isinstance(node, dict):
+            return {k: strip(v) for k, v in node.items() if k not in ("maxLength", "minLength")}
+        if isinstance(node, list):
+            return [strip(v) for v in node]
+        return node
+
+    return cast(dict, strip(model.model_json_schema()))
 
 
 class ModelGateway(Protocol):
@@ -401,7 +427,7 @@ class OllamaGateway:
     def _opinion(
         self, model: str, system: str, prompt: str, role: str, valid: set[str]
     ) -> RiskOpinion:
-        raw = self._chat(model, RiskOpinion.model_json_schema(), system, prompt, role)
+        raw = self._chat(model, grammar_schema(RiskOpinion), system, prompt, role)
         try:
             opinion = RiskOpinion.model_validate(raw)
         except ValidationError as e:
@@ -421,7 +447,7 @@ class OllamaGateway:
             f"Valid evidence ids: {sorted(evidence.keys())}. Respond with JSON only."
         )
         raw = self._chat(
-            self._model, TaskAnalysis.model_json_schema(), ANALYST_SYSTEM, prompt, "analyst"
+            self._model, grammar_schema(TaskAnalysis), ANALYST_SYSTEM, prompt, "analyst"
         )
         try:
             analysis = TaskAnalysis.model_validate(raw)
