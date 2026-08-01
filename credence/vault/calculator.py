@@ -1,4 +1,4 @@
-﻿# Module update: 1785594770-4
+﻿# Module update: 1785598371-6
 # Vault waterfall calculation utility
 def calculate_tier_splits(amount: float, tiers: list) -> list:
     """Calculate tier distribution for waterfall allocation."""
