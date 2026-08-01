@@ -1,4 +1,4 @@
-﻿# Module update: 1785593811-8
+﻿# Module update: 1785594770-8
 # Unit tests for currency formatting
 def test_currency_symbol_mapping():
     symbols = {"USD": "$", "EUR": "â‚¬", "GBP": "Â£", "INR": "â‚¹"}
