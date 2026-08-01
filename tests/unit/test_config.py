@@ -59,3 +59,45 @@ def test_non_default_user_port_and_name_are_honoured():
         database_port=6543,
     )
     assert s.database_url == "postgresql+psycopg://other:pw@db.internal:6543/ledger"
+
+
+# --- fixture-gateway guard -------------------------------------------------
+#
+# The deployed sandbox ran for its entire life on FixtureModelGateway because
+# model_provider defaults to "fixture" and the Cloud Run service never set
+# CREDENCE_MODEL_PROVIDER. Nothing failed: the API kept returning well-formed
+# analyses no model had produced, while the GPU sat idle and the site claimed
+# a live 24B. These pin the guard that makes that combination unstartable.
+
+
+@pytest.mark.parametrize("run_mode", ["GCP_COST", "GCP_ACCURACY"])
+def test_fixture_gateway_is_rejected_on_deployed_run_modes(run_mode: str):
+    with pytest.raises(ValueError, match="fixture"):
+        Settings(run_mode=run_mode, model_provider="fixture")
+
+
+@pytest.mark.parametrize("run_mode", ["GCP_COST", "GCP_ACCURACY"])
+@pytest.mark.parametrize("provider", ["ollama", "disabled"])
+def test_real_and_disabled_providers_are_permitted_when_deployed(run_mode: str, provider: str):
+    """'disabled' stays legal: it blocks AI-dependent approval paths outright,
+    which fails closed. Only 'fixture' fabricates plausible model output."""
+    assert Settings(run_mode=run_mode, model_provider=provider).model_provider == provider
+
+
+@pytest.mark.parametrize("run_mode", ["LOCAL_DEV", "DEMO_LOCKED"])
+def test_fixture_gateway_remains_available_off_gcp(run_mode: str):
+    """Unit tests and local dev still need the deterministic gateway."""
+    assert Settings(run_mode=run_mode, model_provider="fixture").model_provider == "fixture"
+
+
+def test_model_roles_share_one_tag():
+    """One GPU with OLLAMA_MAX_LOADED_MODELS=1 cannot serve two tags without
+    evicting and reloading ~15GB per call. The previous defaults pointed the
+    analyst at qwen3:8b, which was never pulled onto the GPU instance at all.
+
+    _env_file=None isolates this from the developer's local .env, which
+    legitimately runs two small models against a local Ollama.
+    """
+    s = Settings(_env_file=None)
+    assert s.ollama_analyst_model == s.ollama_critic_model
+    assert "qwen3" not in s.ollama_analyst_model

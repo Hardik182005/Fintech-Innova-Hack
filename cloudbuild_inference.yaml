@@ -1,5 +1,30 @@
+# Builds the private GPU inference image.
+#
+# Tagged with the immutable commit SHA, never `latest` alone. The deploy step
+# then pins by digest, so a running revision can always be traced back to the
+# exact source that produced it. COMMIT_SHA is baked in as a build arg and
+# surfaced by the supervisor's /version endpoint.
+substitutions:
+  _COMMIT_SHA: 'unknown'
+  _REPO: 'asia-southeast1-docker.pkg.dev/innova-hack/credence/credence-inference'
+
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'asia-southeast1-docker.pkg.dev/innova-hack/credence/credence-inference:latest', '-f', 'inference.Dockerfile', '.']
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'COMMIT_SHA=${_COMMIT_SHA}'
+      - '-t'
+      - '${_REPO}:${_COMMIT_SHA}'
+      - '-f'
+      - 'inference.Dockerfile'
+      - '.'
+
 images:
-  - 'asia-southeast1-docker.pkg.dev/innova-hack/credence/credence-inference:latest'
+  - '${_REPO}:${_COMMIT_SHA}'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '2400s'

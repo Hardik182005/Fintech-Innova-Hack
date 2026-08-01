@@ -71,11 +71,27 @@ class Settings(BaseSettings):
     # tests, "disabled" blocks auto-approval paths needing AI evidence checks.
     model_provider: str = "fixture"  # ollama | fixture | disabled
     ollama_base_url: str = "http://localhost:11434"
-    ollama_analyst_model: str = "qwen3:8b"
-    ollama_critic_model: str = "mistral-small3.2:24b"
+    # One GPU, OLLAMA_MAX_LOADED_MODELS=1: every role is served by the same
+    # loaded model. Pointing roles at different tags would thrash the single
+    # L4 (evict + reload ~15GB per call), so analyst and critic share one tag.
+    # This must match the tag the inference container actually verified at
+    # startup; a mismatch here is a silent 404 from Ollama at request time.
+    ollama_analyst_model: str = "mistral-small3.2:24b-instruct-2506-q4_K_M"
+    ollama_critic_model: str = "mistral-small3.2:24b-instruct-2506-q4_K_M"
     ollama_embedding_model: str = "qwen3-embedding:0.6b"
     model_timeout_seconds: float = 120.0
     model_max_output_tokens: int = 1024
+
+    # Cloud Run inference is private (ingress=internal) and IAM-protected. The
+    # API mints a Google-signed OIDC identity token for this audience rather
+    # than calling the service unauthenticated.
+    inference_use_oidc: bool = True
+
+    # Resilience. One retry only: a 24B generation is expensive and a retry
+    # storm against a single GPU is how a slow model becomes a dead one.
+    model_max_retries: int = 1
+    model_circuit_fail_threshold: int = 3
+    model_circuit_reset_seconds: float = 60.0
 
     # Demo endpoints bearer token (sandbox only). Deliberately has no default:
     # a shipped default is a shipped credential, and every deployment that
@@ -92,6 +108,24 @@ class Settings(BaseSettings):
     # or sent to the browser. Empty key means voice stays off.
     elevenlabs_api_key: str = Field(default="", validation_alias="ELEVENLABS_API_KEY")
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # a stock ElevenLabs voice
+
+    # A deployed GCP service must never silently fall back to the in-process
+    # fixture gateway. That failure mode is invisible from the outside — the
+    # API keeps returning well-formed analyses that no model ever produced,
+    # and the GPU sits idle while the site claims it is serving. Fail startup
+    # instead, loudly, so the deployment is caught before it can mislead.
+    # "fixture" stays legal for LOCAL_DEV and for unit tests.
+    @model_validator(mode="after")
+    def _forbid_fixture_gateway_on_gcp(self) -> Settings:
+        deployed = self.run_mode in (RunMode.GCP_COST, RunMode.GCP_ACCURACY)
+        if deployed and self.model_provider == "fixture":
+            raise ValueError(
+                f"model_provider='fixture' is not permitted with run_mode={self.run_mode}. "
+                "A deployed environment must use the real private inference gateway "
+                "(CREDENCE_MODEL_PROVIDER=ollama) or explicitly 'disabled'. "
+                "The fixture gateway is for LOCAL_DEV and unit tests only."
+            )
+        return self
 
     # Demo endpoints require the sandbox environment *and* an operator-supplied
     # token. Fail closed on both counts.

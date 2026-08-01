@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
+import threading
+import time
 from typing import Protocol
 
 import httpx
@@ -25,10 +28,63 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from credence.config import Settings
 from credence.errors import CredenceError, ReasonCode
 
+logger = logging.getLogger(__name__)
+
 
 class ModelUnavailableError(CredenceError):
     def __init__(self, detail: str):
         super().__init__(ReasonCode.MODEL_OUTPUT_INVALID, detail)
+
+
+class _CircuitBreaker:
+    """Trips after N consecutive failures and stays open for a cooldown.
+
+    A single L4 serving a 24B model is the scarcest resource in the system.
+    Once it is failing, continuing to send 120s-timeout requests turns one
+    sick instance into a queue of stalled API workers. Opening the circuit
+    converts a slow failure into a fast one, and a fast failure degrades to
+    human review instead of holding the request open.
+
+    Fails closed by design: an open circuit raises ModelUnavailableError,
+    which callers already treat as "escalate", never as "approve".
+    """
+
+    def __init__(self, fail_threshold: int, reset_seconds: float):
+        self._fail_threshold = fail_threshold
+        self._reset_seconds = reset_seconds
+        self._failures = 0
+        self._opened_at: float | None = None
+        self._lock = threading.Lock()
+
+    @property
+    def state(self) -> str:
+        with self._lock:
+            if self._opened_at is None:
+                return "closed"
+            if time.monotonic() - self._opened_at >= self._reset_seconds:
+                return "half_open"
+            return "open"
+
+    def before_call(self) -> None:
+        if self.state == "open":
+            raise ModelUnavailableError(
+                "inference circuit open — failing closed to human review"
+            )
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._failures = 0
+            self._opened_at = None
+
+    def record_failure(self) -> None:
+        with self._lock:
+            self._failures += 1
+            if self._failures >= self._fail_threshold:
+                self._opened_at = time.monotonic()
+                logger.warning(
+                    "inference circuit opened after %d consecutive failures",
+                    self._failures,
+                )
 
 
 class ExtractedClaim(BaseModel):
@@ -213,36 +269,99 @@ class OllamaGateway:
     def __init__(self, settings: Settings):
         self._base = settings.ollama_base_url.rstrip("/")
         self._model = settings.ollama_analyst_model
-        # Reasoning tier: the underwriter and critic get the larger model,
-        # because judging whether a claim is supported is harder than
-        # extracting it.
+        # One GPU with a single loaded model: both tiers resolve to the same
+        # tag (see config). Kept as separate fields so a future two-GPU
+        # profile can split them again without touching call sites.
         self._reasoning_model = settings.ollama_critic_model
         self._timeout = settings.model_timeout_seconds
         self._max_tokens = settings.model_max_output_tokens
+        self._use_oidc = settings.inference_use_oidc
+        self._max_retries = settings.model_max_retries
+        self._breaker = _CircuitBreaker(
+            settings.model_circuit_fail_threshold,
+            settings.model_circuit_reset_seconds,
+        )
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Mint a Google-signed OIDC identity token for the private inference
+        service. The audience is the service base URL, which is what Cloud Run
+        validates. Returns no header when OIDC is off (local Ollama).
+
+        A minting failure is deliberately fatal rather than falling through to
+        an unauthenticated call: silently downgrading auth is how a private
+        service quietly starts accepting anonymous traffic.
+        """
+        if not self._use_oidc:
+            return {}
+        try:
+            import google.auth.transport.requests
+            import google.oauth2.id_token
+
+            request = google.auth.transport.requests.Request()
+            token = google.oauth2.id_token.fetch_id_token(request, self._base)
+            return {"Authorization": f"Bearer {token}"}
+        except Exception as e:
+            raise ModelUnavailableError(
+                f"could not mint OIDC token for inference: {type(e).__name__}"
+            ) from e
 
     def _chat(self, model: str, schema: dict, system: str, prompt: str, role: str) -> dict:
-        """One schema-constrained completion. Any transport, decode, or shape
-        error becomes ModelUnavailableError so callers fail closed."""
-        try:
-            response = httpx.post(
-                f"{self._base}/api/chat",
-                json={
-                    "model": model,
-                    "stream": False,
-                    "think": False,
-                    "format": schema,
-                    "options": {"num_predict": self._max_tokens, "temperature": 0},
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": prompt},
-                    ],
-                },
-                timeout=self._timeout,
-            )
-            response.raise_for_status()
-            return json.loads(response.json()["message"]["content"])
-        except (httpx.HTTPError, KeyError, json.JSONDecodeError) as e:
-            raise ModelUnavailableError(f"ollama {role} failed: {type(e).__name__}") from e
+        """One schema-constrained completion, guarded by a circuit breaker and
+        at most one retry. Any transport, decode, or shape error becomes
+        ModelUnavailableError so callers fail closed to human review."""
+        self._breaker.before_call()
+        headers = self._auth_headers()
+        payload = {
+            "model": model,
+            "stream": False,
+            "think": False,
+            "format": schema,
+            "options": {"num_predict": self._max_tokens, "temperature": 0},
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+        }
+
+        last_error: Exception | None = None
+        # One retry covers a cold-start race or a dropped connection. It does
+        # not cover a malformed response: if the model produced invalid JSON
+        # once at temperature 0, it will produce it again, and retrying only
+        # burns GPU time.
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = httpx.post(
+                    f"{self._base}/api/chat",
+                    json=payload,
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+                response.raise_for_status()
+                content = json.loads(response.json()["message"]["content"])
+                self._breaker.record_success()
+                return content
+            except (httpx.TransportError, httpx.HTTPStatusError) as e:
+                last_error = e
+                if attempt < self._max_retries:
+                    logger.warning(
+                        "inference %s attempt %d failed (%s); retrying once",
+                        role,
+                        attempt + 1,
+                        type(e).__name__,
+                    )
+                    continue
+                break
+            except (KeyError, json.JSONDecodeError, ValueError) as e:
+                # Malformed output: not retryable, and not a transport fault.
+                self._breaker.record_failure()
+                raise ModelUnavailableError(
+                    f"ollama {role} returned malformed output: {type(e).__name__}"
+                ) from e
+
+        self._breaker.record_failure()
+        raise ModelUnavailableError(
+            f"ollama {role} failed: {type(last_error).__name__}"
+        ) from last_error
 
     def _opinion(
         self, model: str, system: str, prompt: str, role: str, valid: set[str]

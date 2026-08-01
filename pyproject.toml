@@ -14,6 +14,10 @@ dependencies = [
     "httpx>=0.27,<1.0",
     "psycopg[binary]>=3.2,<4.0",
     "structlog>=24.4,<26.0",
+    # Mints Google-signed OIDC identity tokens so the API can call the private
+    # IAM-protected Cloud Run inference service. Was previously only present
+    # transitively; the container build needs it declared.
+    "google-auth>=2.35,<3.0",
 ]
 
 [dependency-groups]
