@@ -23,6 +23,15 @@ resource "google_cloud_run_v2_service" "api" {
   template {
     service_account = google_service_account.api.email
 
+    # 600s, not the 300s default. Underwriting an application makes a real call
+    # to the 24B model on credence-inference, which scales to zero: a cold
+    # start there is ~258s to load the weights plus ~76s of warmup, so a
+    # request that arrives cold needs longer than 300s to complete. At the
+    # default the front end killed it before the model had even finished
+    # loading, turning a slow first request into a 504. Matches the 600s
+    # already set on inference.tf.
+    timeout = "600s"
+
     scaling {
       min_instance_count = 0
       max_instance_count = var.api_max_instances
@@ -169,6 +178,12 @@ resource "google_cloud_run_v2_service" "web" {
 
   template {
     service_account = google_service_account.web.email
+
+    # 600s for the same reason as the API. The BFF proxies the browser's
+    # request through to underwriting and holds the connection open for the
+    # whole model call, so a shorter timeout here would cut the request off
+    # regardless of what the API allows.
+    timeout = "600s"
 
     scaling {
       min_instance_count = 0
