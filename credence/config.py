@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     passport_issuer: str = "credence-sandbox"
     passport_audience: str = "credence-api"
     passport_max_ttl_seconds: int = 24 * 3600
+    # Ed25519 private key PEM (PKCS#8), injected from Secret Manager on GCP.
+    # Empty means LOCAL_DEV's ephemeral key — see the validator below for why
+    # that is refused on a deployed service.
+    passport_signing_key_pem: str = ""
 
     # Policy engine (OPA). Fail closed when unreachable.
     opa_url: str = "http://localhost:8181"
@@ -124,6 +128,25 @@ class Settings(BaseSettings):
                 "A deployed environment must use the real private inference gateway "
                 "(CREDENCE_MODEL_PROVIDER=ollama) or explicitly 'disabled'. "
                 "The fixture gateway is for LOCAL_DEV and unit tests only."
+            )
+        return self
+
+    # A deployed service must sign passports with a key that outlives the
+    # process. The ephemeral dev key looks harmless because issuance and
+    # verification both succeed within one instance — but it is only valid
+    # there and only until the next deploy. In production that showed up as
+    # applications rejected with AGENT_IDENTITY_INVALID immediately after a
+    # revision rollout, and it would have shown up again as nondeterministic
+    # rejections once more than one instance was serving. Refuse to start
+    # rather than fall back to a key that quietly expires with the process.
+    @model_validator(mode="after")
+    def _require_stable_signing_key_on_gcp(self) -> Settings:
+        deployed = self.run_mode in (RunMode.GCP_COST, RunMode.GCP_ACCURACY)
+        if deployed and not self.passport_signing_key_pem.strip():
+            raise ValueError(
+                f"CREDENCE_PASSPORT_SIGNING_KEY_PEM is required with run_mode={self.run_mode}. "
+                "Without it every passport is signed by a per-process key that no other "
+                "instance can verify and that every redeploy invalidates."
             )
         return self
 

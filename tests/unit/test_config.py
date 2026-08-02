@@ -11,6 +11,8 @@ from the cause. These tests pin the assembly.
 from __future__ import annotations
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from credence.config import Settings
 
@@ -61,6 +63,20 @@ def test_non_default_user_port_and_name_are_honoured():
     assert s.database_url == "postgresql+psycopg://other:pw@db.internal:6543/ledger"
 
 
+def _signing_key_pem() -> str:
+    """A throwaway Ed25519 key, for tests that need a deployed run mode to be
+    constructible at all. What the key is never matters here."""
+    return (
+        Ed25519PrivateKey.generate()
+        .private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        .decode("ascii")
+    )
+
+
 # --- fixture-gateway guard -------------------------------------------------
 #
 # The deployed sandbox ran for its entire life on FixtureModelGateway because
@@ -81,7 +97,14 @@ def test_fixture_gateway_is_rejected_on_deployed_run_modes(run_mode: str):
 def test_real_and_disabled_providers_are_permitted_when_deployed(run_mode: str, provider: str):
     """'disabled' stays legal: it blocks AI-dependent approval paths outright,
     which fails closed. Only 'fixture' fabricates plausible model output."""
-    assert Settings(run_mode=run_mode, model_provider=provider).model_provider == provider
+    settings = Settings(
+        run_mode=run_mode,
+        model_provider=provider,
+        # A deployed run mode also demands a stable signing key; supplied here
+        # so this test keeps failing for provider reasons only.
+        passport_signing_key_pem=_signing_key_pem(),
+    )
+    assert settings.model_provider == provider
 
 
 @pytest.mark.parametrize("run_mode", ["LOCAL_DEV", "DEMO_LOCKED"])

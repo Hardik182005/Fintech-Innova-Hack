@@ -24,17 +24,26 @@ from credence.models import (
     PassportRevocation,
     User,
 )
-from credence.passport.keys import LocalDevSigner
+from credence.passport.keys import LocalDevSigner, Signer, StaticEd25519Signer
 from credence.passport.schemas import SignedPassport
 from credence.passport.service import PassportService, RevocationStore
 
 
 @lru_cache
-def get_signer() -> LocalDevSigner:
-    """Process-wide ephemeral signing key (LOCAL_DEV). Cloud KMS in Phase 5;
-    the key never touches disk and is regenerated on restart, which also
-    invalidates all previously issued sandbox passports — acceptable in dev."""
-    return LocalDevSigner(issuer=get_settings().passport_issuer)
+def get_signer() -> Signer:
+    """The process-wide passport signer.
+
+    A configured key (Secret Manager on GCP) is used when present; otherwise
+    LOCAL_DEV falls back to an ephemeral key. There is deliberately no fallback
+    on a deployed service — Settings refuses to start without a static key,
+    because an ephemeral one invalidates every passport on redeploy and cannot
+    be verified by a sibling instance.
+    """
+    settings = get_settings()
+    pem = settings.passport_signing_key_pem.strip()
+    if pem:
+        return StaticEd25519Signer(pem, issuer=settings.passport_issuer)
+    return LocalDevSigner(issuer=settings.passport_issuer)
 
 
 class DbRevocationStore(RevocationStore):
