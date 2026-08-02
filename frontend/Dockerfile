@@ -22,7 +22,9 @@ RUN groupadd -r app && useradd -r -g app app
 
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
+# No `public/` copy: this app serves no static files from it. The Next.js
+# scaffold SVGs that used to sit there were unreferenced and were removed, and
+# a COPY of a directory that does not exist fails the build.
 
 ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0
