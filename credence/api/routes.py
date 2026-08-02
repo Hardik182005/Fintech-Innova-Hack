@@ -210,10 +210,34 @@ def create_task(
     return {"task_id": task.id, "status": task.status}
 
 
+#: Evidence kinds the product accepts. Closed, because the type is what the
+#: retrieval and the reason codes key off — a free-text type would let a caller
+#: invent a category that nothing downstream knows how to read.
+EVIDENCE_TYPES = frozenset(
+    {
+        "TASK_ORDER",
+        "COST_QUOTE",
+        "PRIOR_TASK_OUTCOME",
+        "REPAYMENT_HISTORY",
+        "AUTHORIZATION",
+        "VENDOR_INFO",
+        "SPENDING_HISTORY",
+        "TASK_CONTRACT",
+        "INVOICE",
+        "RISK_EVENT",
+    }
+)
+
+
 class AddEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     evidence_type: str
-    content_text: str = Field(max_length=20_000)
-    source: str = "upload"
+    # 20 000 characters is the size restriction. It is enforced here rather than
+    # at the web tier so it holds for every caller, and it is a character bound
+    # rather than a byte bound because that is what the column stores.
+    content_text: str = Field(min_length=1, max_length=20_000)
+    source: str = Field(default="upload", max_length=200)
 
 
 @router.post("/tasks/{task_id}/evidence", status_code=201, tags=["tasks"])
@@ -223,7 +247,12 @@ def add_evidence(
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    evidence = credit.add_evidence(
+    if body.evidence_type not in EVIDENCE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown evidence_type; expected one of {sorted(EVIDENCE_TYPES)}",
+        )
+    intake = credit.add_evidence(
         session,
         organization_id=user.organization_id,
         task_id=task_id,
@@ -231,7 +260,19 @@ def add_evidence(
         content_text=body.content_text,
         source=body.source,
     )
-    return {"evidence_id": evidence.id, "content_hash": evidence.content_hash}
+    return {
+        "evidence_id": intake.evidence.id,
+        "content_hash": intake.evidence.content_hash,
+        "evidence_type": intake.evidence.evidence_type,
+        "source": intake.evidence.source,
+        "created_at": intake.evidence.created_at.isoformat(),
+        "organization_id": intake.evidence.organization_id,
+        "task_id": intake.evidence.task_id,
+        # What the intake boundary did to the text, so the submitter can see it
+        # rather than discovering later that the stored copy differs.
+        "redactions": intake.redactions,
+        "injection_signature": intake.injection_signature,
+    }
 
 
 @router.get("/tasks/{task_id}", tags=["tasks"])
@@ -265,8 +306,22 @@ def list_evidence(
             TaskEvidence.organization_id == user.organization_id,
         )
     ).scalars()
+    # `content_text` is the stored copy, i.e. post-redaction. It is returned so
+    # a submitter can see back what was actually kept; the same text is already
+    # exposed tenant-scoped on the underwriting view, so this adds no reach.
     return [
-        {"evidence_id": e.id, "type": e.evidence_type, "hash": e.content_hash, "source": e.source}
+        {
+            "evidence_id": e.id,
+            "type": e.evidence_type,
+            "evidence_type": e.evidence_type,
+            "hash": e.content_hash,
+            "content_hash": e.content_hash,
+            "source": e.source,
+            "content_text": e.content_text,
+            "organization_id": e.organization_id,
+            "task_id": e.task_id,
+            "created_at": e.created_at.isoformat(),
+        }
         for e in rows
     ]
 

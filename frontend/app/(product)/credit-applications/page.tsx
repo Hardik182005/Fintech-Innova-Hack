@@ -3,13 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Search } from "lucide-react";
+import { FileText, Plus, Search } from "lucide-react";
 
+import { NewApplicationSheet } from "@/components/onboarding/new-application";
 import { PageHeader } from "@/components/data/section";
 import { EmptyState, ErrorState, Unavailable } from "@/components/data/states";
 import { StatusBadge } from "@/components/data/status";
 import { MoneyValue } from "@/components/data/value";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/field";
 import { SkeletonRows } from "@/components/ui/skeleton";
@@ -50,6 +52,7 @@ export default function CreditApplicationsPage() {
   const applications = useApplications();
   const [stage, setStage] = React.useState<string>("");
   const [search, setSearch] = React.useState("");
+  const [applying, setApplying] = React.useState(false);
 
   const rows = React.useMemo(() => {
     if (applications.data === undefined) return [];
@@ -73,7 +76,14 @@ export default function CreditApplicationsPage() {
       <PageHeader
         title="Credit Applications"
         description="Requests for task-backed working capital. The AI recommends; the deterministic credit engine decides; anything marginal goes to a human."
+        actions={
+          <Button variant="primary" onClick={() => setApplying(true)}>
+            <Plus /> New credit application
+          </Button>
+        }
       />
+
+      <NewApplicationSheet open={applying} onClose={() => setApplying(false)} />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
@@ -145,8 +155,15 @@ export default function CreditApplicationsPage() {
                       }
                       body={
                         applications.data.length === 0
-                          ? "Run a demonstration scenario to put a full application through the pipeline."
+                          ? "Submit one against a task, or run a demonstration scenario to put a full application through the pipeline."
                           : "Try a different stage or search term."
+                      }
+                      action={
+                        applications.data.length === 0 ? (
+                          <Button variant="primary" onClick={() => setApplying(true)}>
+                            <Plus /> New credit application
+                          </Button>
+                        ) : undefined
                       }
                     />
                   </TableCell>

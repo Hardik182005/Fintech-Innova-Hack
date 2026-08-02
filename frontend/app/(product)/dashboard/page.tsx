@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { ExposureChart } from "@/components/charts/exposure-chart";
+import { FirstRunBanner } from "@/components/onboarding/first-run-banner";
 import { PageHeader, Section } from "@/components/data/section";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/data/states";
 import { Metric, MoneyValue, Row, Rows } from "@/components/data/value";
@@ -76,6 +77,8 @@ export default function DashboardPage() {
           </>
         }
       />
+
+      <FirstRunBanner />
 
       {summary.isPending ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

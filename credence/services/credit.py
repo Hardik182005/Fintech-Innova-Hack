@@ -11,6 +11,7 @@ import hashlib
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -33,6 +34,7 @@ from credence.modelgw import ModelGateway, ModelUnavailableError, RiskOpinion, T
 from credence.modelgw.gateway import evidence_contains_instruction
 from credence.models import Agent, AgentStatus
 from credence.services.identity import verify_stored_passport
+from credence.services.redaction import redact
 from credence.state import application_transition
 from credence.telemetry import current_request_id, record_stage
 from credence.underwriting import (
@@ -98,6 +100,14 @@ def create_task(
     return task
 
 
+class EvidenceIntake(NamedTuple):
+    evidence: TaskEvidence
+    #: Identifier kinds stripped before storage. See `services.redaction`.
+    redactions: list[str]
+    #: True when the submitted text matches a known prompt-injection signature.
+    injection_signature: bool
+
+
 def add_evidence(
     session: Session,
     *,
@@ -106,21 +116,44 @@ def add_evidence(
     evidence_type: str,
     content_text: str,
     source: str = "upload",
-) -> TaskEvidence:
+) -> EvidenceIntake:
+    """Store one piece of evidence, redacted, against a task in this tenant.
+
+    Two checks run at the boundary, and they end differently on purpose.
+
+    Redaction is destructive and unconditional: the identifiers it recognises
+    never reach the database, so the content hash is taken over the redacted
+    text and is a hash of what is actually stored.
+
+    The injection signature is reported and stored, not rejected. Evidence is
+    untrusted input by design — the model gateway wraps it in `<evidence>` tags
+    and instructs the analyst to treat instructions inside it as a concern, and
+    the verifier re-checks every claim against evidence IDs regardless. Refusing
+    the submission here would move the defence from a place that can prove it
+    held to a place that merely says no, and would leave the injected text
+    outside the audit record entirely. The caller surfaces the flag so a person
+    knows what they submitted.
+    """
     task = session.get(Task, task_id)
     if task is None or task.organization_id != organization_id:
         raise CredenceError(ReasonCode.CROSS_TENANT_EVIDENCE, "task not found in tenant")
+
+    cleaned = redact(content_text)
     evidence = TaskEvidence(
         organization_id=organization_id,
         task_id=task_id,
         evidence_type=evidence_type,
         source=source,
-        content_text=content_text,
-        content_hash=hashlib.sha256(content_text.encode()).hexdigest(),
+        content_text=cleaned.text,
+        content_hash=hashlib.sha256(cleaned.text.encode()).hexdigest(),
     )
     session.add(evidence)
     session.flush()
-    return evidence
+    return EvidenceIntake(
+        evidence=evidence,
+        redactions=cleaned.kinds,
+        injection_signature=evidence_contains_instruction({evidence.id: cleaned.text}),
+    )
 
 
 def create_mandate(

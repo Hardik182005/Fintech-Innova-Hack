@@ -10,6 +10,7 @@ import {
   ScrollText,
   Settings,
   ShieldAlert,
+  Sparkles,
   Vault,
   type LucideIcon,
 } from "lucide-react";
@@ -43,6 +44,12 @@ export const NAV: NavGroup[] = [
   {
     label: "Operations",
     items: [
+      {
+        href: "/start",
+        label: "Start here",
+        icon: Sparkles,
+        summary: "Register an agent and request credit, step by step",
+      },
       {
         href: "/dashboard",
         label: "Overview",

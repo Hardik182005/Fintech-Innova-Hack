@@ -7,9 +7,11 @@ import type {
   CreditApplicationSummary,
   DashboardSummary,
   EvaluationMetrics,
+  EvidenceReceipt,
   ExposurePoint,
   LabelMaps,
   Me,
+  PassportVerification,
   PolicyParameters,
   Readiness,
   RepaymentRow,
@@ -17,6 +19,7 @@ import type {
   RiskSummary,
   ScenarioName,
   ScenarioResult,
+  StoredEvidence,
   SystemIntelligence,
   SystemIntelligenceWindow,
   TaskSummary,
@@ -119,9 +122,25 @@ export const listAgents = () => request<AgentSummary[]>("/v1/agents");
 export const getAgentProfile = (agentId: string) =>
   request<AgentProfile>(`/v1/agents/${encodeURIComponent(agentId)}/profile`);
 
+/**
+ * Re-run the passport checks against the agent's stored passport.
+ *
+ * This is a verification, not a lookup: the server re-derives the canonical
+ * bytes and re-checks the signature, issuer, audience, validity window,
+ * revocation and scope every time it is called. A passport that was valid an
+ * hour ago and has since expired or been revoked comes back invalid here, which
+ * is the whole reason the product asks rather than caching an answer.
+ */
+export const verifyPassport = (agentId: string) =>
+  request<PassportVerification>(
+    `/v1/agents/${encodeURIComponent(agentId)}/passport/verify`,
+  );
+
 // --------------------------------------------------------------------- work --
 
 export const listTasks = () => request<TaskSummary[]>("/v1/tasks");
+export const listEvidence = (taskId: string) =>
+  request<StoredEvidence[]>(`/v1/tasks/${encodeURIComponent(taskId)}/evidence`);
 export const listCreditApplications = () =>
   request<CreditApplicationSummary[]>("/v1/credit-applications");
 export const getUnderwriting = (applicationId: string) =>
@@ -150,6 +169,101 @@ export const reviewApplication = (
   },
 ) => post(`/v1/credit-applications/${encodeURIComponent(applicationId)}/review`, body);
 
+// ------------------------------------------------------------- onboarding --
+
+/**
+ * The write path a person uses to put their own data into the system.
+ *
+ * Until these existed the browser could reach 5 of the API's 22 write
+ * endpoints, and every agent, task, and application on the deployment came
+ * from a demo scenario. A visitor could read the product but not use it.
+ *
+ * Every amount below is already integer minor units. Rupees are parsed exactly
+ * once, at the form field, by `rupeeInputToMinor` — nothing between that
+ * function and the wire does arithmetic on a rupee value.
+ */
+
+export const createAgent = (body: {
+  name: string;
+  model_provider: string;
+  model_name: string;
+  model_version_hash: string;
+}) => post<{ agent_id: string; status: string }>("/v1/agents", body);
+
+export const issuePassport = (
+  agentId: string,
+  body: {
+    purpose: string;
+    permitted_task_categories: string[];
+    max_borrowing_authority_minor: number;
+    max_transaction_value_minor: number;
+    approved_vendor_ids?: string[];
+    ttl_hours?: number;
+  },
+) =>
+  post<{ passport_id: string; payload: unknown; signature_b64: string }>(
+    `/v1/agents/${encodeURIComponent(agentId)}/passport`,
+    body,
+  );
+
+export const createTask = (body: {
+  agent_id: string;
+  title: string;
+  description?: string;
+  category: string;
+  expected_revenue_minor: number;
+  expected_cost_minor: number;
+  currency?: string;
+}) => post<{ task_id: string; status: string }>("/v1/tasks", body);
+
+/**
+ * Submit one piece of evidence against a task.
+ *
+ * The receipt is worth reading rather than discarding. The server redacts
+ * recognised identifiers before storing, so `redactions` says what it removed
+ * and the stored text differs from what was typed; `injection_signature` says
+ * the text matched a known prompt-injection pattern and was kept anyway. Both
+ * are things the person who just typed the text needs told.
+ */
+export const addEvidence = (
+  taskId: string,
+  body: { evidence_type: string; content_text: string; source?: string },
+) => post<EvidenceReceipt>(`/v1/tasks/${encodeURIComponent(taskId)}/evidence`, body);
+
+export const createRevenueMandate = (taskId: string, body: { reserve_cap_minor: number }) =>
+  post<{ mandate_id: string; status: string; locked: boolean }>(
+    `/v1/tasks/${encodeURIComponent(taskId)}/revenue-mandate`,
+    body,
+  );
+
+export const createApplication = (body: {
+  agent_id: string;
+  task_id: string;
+  requested_minor: number;
+  requested_duration_hours: number;
+  expected_revenue_minor: number;
+  expected_cost_minor: number;
+  owner_exposure_cap_minor: number;
+  proposed_vendor_ids: string[];
+  currency?: string;
+}) => post<{ application_id: string; status: string }>("/v1/credit-applications", body);
+
+export const evaluateApplication = (applicationId: string) =>
+  post<{
+    application_id: string;
+    status: string;
+    decision: string;
+    approved_limit_minor: number;
+    reason_codes: string[];
+    receipt_hash: string;
+  }>(`/v1/credit-applications/${encodeURIComponent(applicationId)}/evaluate`);
+
+export const createVault = (body: {
+  application_id: string;
+  per_transaction_limit_minor: number;
+}) =>
+  post<{ vault_id: string; status: string; total_limit_minor: number }>("/v1/vaults", body);
+
 // ------------------------------------------------------------------- vaults --
 
 export const listVaults = () => request<VaultSummary[]>("/v1/vaults");
@@ -174,6 +288,45 @@ export const getTransaction = (proposalId: string) =>
 // ---------------------------------------------------------------- repayments --
 
 export const listRepayments = () => request<RepaymentRow[]>("/v1/repayments");
+
+/**
+ * Record revenue against a vault and run the repayment waterfall.
+ *
+ * `task_completed` is what separates a partial repayment from a full one: the
+ * backend settles the facility only when the task is declared complete, so the
+ * sandbox control that says "final payment" must set it and the one that says
+ * "partial" must not.
+ *
+ * `external_event_id` is the idempotency key. A double-submitted payment is a
+ * duplicate credit event, not a second one, so the caller supplies a stable id
+ * rather than letting the server invent one per request.
+ */
+export const receiveRevenue = (
+  vaultId: string,
+  body: {
+    amount_minor: number;
+    external_event_id: string;
+    task_completed: boolean;
+    currency?: string;
+  },
+) =>
+  post<{
+    repayment_id: string;
+    principal_minor: number;
+    fee_minor: number;
+    owner_minor: number;
+    allocations: Record<string, number>;
+  }>(`/v1/vaults/${encodeURIComponent(vaultId)}/revenue`, body);
+
+export const simulateFailure = (vaultId: string) =>
+  post<{
+    repayment_id: string;
+    kind: string;
+    swept_minor: number;
+    reserve_drawn_minor: number;
+    simulated_loss_minor: number;
+    allocations: Record<string, number>;
+  }>(`/v1/vaults/${encodeURIComponent(vaultId)}/simulate-failure`);
 
 // ---------------------------------------------------------- risk and audit --
 

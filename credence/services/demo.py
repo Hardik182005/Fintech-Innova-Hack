@@ -181,7 +181,7 @@ def _setup_credit(
     vault = vault_ops.create_vault(session, app.id, per_transaction_limit_minor=60_000)
     return {
         "task_id": task.id,
-        "evidence_ids": [ev1.id, ev2.id],
+        "evidence_ids": [ev1.evidence.id, ev2.evidence.id],
         "mandate_id": mandate.id,
         "application_id": app.id,
         "decision": decision.decision,

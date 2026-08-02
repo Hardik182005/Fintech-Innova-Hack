@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/data/section";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/data/states";
 import { StatusBadge, statusLabel } from "@/components/data/status";
 import { Mono, MoneyValue, Row, Rows } from "@/components/data/value";
+import { RepaymentControls } from "@/components/onboarding/repayment-controls";
 import { Waterfall } from "@/components/vaults/waterfall";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -299,7 +300,9 @@ function Loaded({ vault }: { vault: VaultDetail }) {
           )}
         </TabsContent>
 
-        <TabsContent value="repayment">
+        <TabsContent value="repayment" className="space-y-4">
+          <RepaymentControls vault={vault} />
+
           <div className="grid gap-4 lg:grid-cols-3">
             <Card>
               <CardHeader>

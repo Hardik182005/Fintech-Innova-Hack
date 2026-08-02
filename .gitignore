@@ -47,17 +47,17 @@ models/
 frontend/node_modules/
 frontend/.next/
 frontend/.env.local
-website-2.zip
+
+# Local scratch: downloaded tools, archives, scratch indexes, run logs. None of
+# it is an input to a build, and a 190 MB archive in a clone helps nobody.
+*.zip
+*.exe
+*.log
+.user_index
 
 # OS / editor
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
-auto_push.log
-users.json
-.user_index
-cloud-sql-proxy.exe
-
-
 

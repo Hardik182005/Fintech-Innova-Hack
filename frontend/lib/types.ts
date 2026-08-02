@@ -184,6 +184,34 @@ export type EvidenceItem = {
   created_at: Timestamp | null;
 };
 
+/**
+ * One stored evidence record, as listed against its task.
+ *
+ * `content_text` is the copy the server kept, which is the redacted one — the
+ * submitted string and the stored string differ whenever `redactions` came
+ * back non-empty, and `content_hash` covers the stored copy.
+ */
+export type StoredEvidence = EvidenceItem & {
+  organization_id: string;
+  task_id: string;
+};
+
+/** What the API returns when a piece of evidence is accepted. */
+export type EvidenceReceipt = StoredEvidence & {
+  /** Identifier kinds stripped at the intake boundary; empty when none matched. */
+  redactions: string[];
+  /** The submitted text matched a known prompt-injection signature. Stored
+   *  anyway — the defence is in the analyst prompt and the verifier. */
+  injection_signature: boolean;
+};
+
+/** Result of re-running the passport checks. Recomputed on every call. */
+export type PassportVerification = {
+  agent_id: string;
+  valid: boolean;
+  reason_codes: string[];
+};
+
 /** Bounded model output. Advisory only — it never sets an amount. */
 export type AiRecommendation = {
   role: string;

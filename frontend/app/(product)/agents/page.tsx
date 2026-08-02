@@ -2,14 +2,16 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Bot, Search } from "lucide-react";
+import { Bot, Plus, Search } from "lucide-react";
 
+import { RegisterAgentSheet } from "@/components/onboarding/register-agent";
 import { PageHeader } from "@/components/data/section";
 import { EmptyState, ErrorState, Unavailable } from "@/components/data/states";
 import { RiskTierBadge, StatusBadge } from "@/components/data/status";
 import { TrustScore } from "@/components/data/trust";
 import { MoneyValue } from "@/components/data/value";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
 import { SkeletonRows } from "@/components/ui/skeleton";
@@ -38,6 +40,7 @@ export default function AgentsPage() {
   const agents = useAgents();
   const [filter, setFilter] = React.useState<Filter>("ALL");
   const [search, setSearch] = React.useState("");
+  const [registering, setRegistering] = React.useState(false);
 
   const rows = React.useMemo(() => {
     if (agents.data === undefined) return [];
@@ -59,7 +62,14 @@ export default function AgentsPage() {
       <PageHeader
         title="AI Agents"
         description="Autonomous agents registered under this workspace. Credit is only ever extended to an agent holding a verified passport."
+        actions={
+          <Button variant="primary" onClick={() => setRegistering(true)}>
+            <Plus /> Register agent
+          </Button>
+        }
       />
+
+      <RegisterAgentSheet open={registering} onClose={() => setRegistering(false)} />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
@@ -137,8 +147,15 @@ export default function AgentsPage() {
                       }
                       body={
                         agents.data.length === 0
-                          ? "Run a demonstration scenario to register an agent with a signed passport, or register one through the API."
+                          ? "Register one with the button above — it creates the agent, issues a signed passport and re-runs all six passport checks."
                           : "Try a different status filter or search term."
+                      }
+                      action={
+                        agents.data.length === 0 ? (
+                          <Button variant="primary" onClick={() => setRegistering(true)}>
+                            <Plus /> Register agent
+                          </Button>
+                        ) : undefined
                       }
                     />
                   </TableCell>

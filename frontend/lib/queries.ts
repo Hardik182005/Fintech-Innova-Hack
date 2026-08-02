@@ -279,6 +279,61 @@ export function useRunScenario() {
   });
 }
 
+// -------------------------------------------------------------- onboarding --
+
+/**
+ * Drop the whole cache after an onboarding sequence.
+ *
+ * Registering an agent or submitting an application is four or five writes that
+ * between them touch the agent list, the tasks, the applications, the vaults,
+ * the dashboard totals, the risk summary and the audit chain. The onboarding
+ * forms run those writes as an ordered sequence through `lib/api` rather than
+ * as separate mutations, so there is one invalidation at the end — and it is
+ * the broad one, for the same reason `useRunScenario` uses it: an enumerated
+ * list here would go stale the first time a page is added.
+ */
+export function useInvalidateWorkspace() {
+  const client = useQueryClient();
+  return useCallback(() => void client.invalidateQueries(), [client]);
+}
+
+// -------------------------------------------------- repayment (sandbox ops) --
+
+export function useReceiveRevenue(vaultId: string) {
+  const invalidate = useInvalidateAfterWrite();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.receiveRevenue>[1]) =>
+      api.receiveRevenue(vaultId, body),
+    onSuccess: () =>
+      invalidate([
+        keys.vaults,
+        keys.vault(vaultId),
+        keys.repayments,
+        keys.dashboard,
+        keys.riskSummary,
+        keys.auditEvents,
+        keys.auditChain,
+      ]),
+  });
+}
+
+export function useSimulateFailure(vaultId: string) {
+  const invalidate = useInvalidateAfterWrite();
+  return useMutation({
+    mutationFn: () => api.simulateFailure(vaultId),
+    onSuccess: () =>
+      invalidate([
+        keys.vaults,
+        keys.vault(vaultId),
+        keys.repayments,
+        keys.dashboard,
+        keys.riskSummary,
+        keys.auditEvents,
+        keys.auditChain,
+      ]),
+  });
+}
+
 // ------------------------------------------------------ system intelligence --
 
 export const systemIntelligenceKey = (window: SystemIntelligenceWindow) =>

@@ -9,6 +9,7 @@ import { PageHeader, Section } from "@/components/data/section";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/data/states";
 import { StatusBadge, statusLabel } from "@/components/data/status";
 import { Mono, MoneyValue, Row, Rows } from "@/components/data/value";
+import { UnderwritingSummary } from "@/components/onboarding/underwriting-summary";
 import { DecisionPanels } from "@/components/underwriting/decision-panels";
 import { ReviewControls } from "@/components/underwriting/review-controls";
 import { DecisionNarration } from "@/components/voice/decision-narration";
@@ -43,13 +44,13 @@ export default function ApplicationDetailPage() {
       ) : view.isError ? (
         <ErrorState detail={view.error.message} onRetry={() => void view.refetch()} />
       ) : (
-        <Loaded view={view.data} />
+        <Loaded view={view.data} onRefetch={() => void view.refetch()} />
       )}
     </div>
   );
 }
 
-function Loaded({ view }: { view: UnderwritingView }) {
+function Loaded({ view, onRefetch }: { view: UnderwritingView; onRefetch: () => void }) {
   const { application, agent, task } = view;
 
   return (
@@ -123,6 +124,8 @@ function Loaded({ view }: { view: UnderwritingView }) {
 
         <RevenueMandateCard mandate={view.revenue_mandate} />
       </div>
+
+      <UnderwritingSummary view={view} onRefetch={onRefetch} />
 
       {/* ------------------------------------------- the three panels -- */}
       <Section
