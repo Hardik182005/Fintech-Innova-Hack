@@ -91,6 +91,7 @@ approval.**
 | 4. Run underwriting and read the decision line by line | `/credit-applications/{id}` |
 | 5. Open the vault, record revenue, watch the waterfall repay | `/vaults/{id}` → Repayment |
 | Or skip ahead: six seeded scenarios, one click each | [`/judge-demo`](https://credence-web-ppmafqinnq-as.a.run.app/judge-demo) |
+| Review Team Kryptonite pitch deck & presentation (PDF) | [`CredenceAI_Team_Kryptonite_PPT.pdf`](CredenceAI_Team_Kryptonite_PPT.pdf) |
 
 A fresh browser session gets its own tenant. Nothing you enter is visible to
 anyone else's session, and cross-tenant reads fail with `CROSS_TENANT_EVIDENCE`
