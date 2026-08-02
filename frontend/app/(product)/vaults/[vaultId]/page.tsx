@@ -76,7 +76,9 @@ function Loaded({ vault }: { vault: VaultDetail }) {
           <span className="flex flex-wrap items-center gap-3">
             Vault {shortId(vault.vault_id, 10, 4)}
             <StatusBadge status={vault.status} />
-            {vault.frozen_reason !== null && (
+            {/* Truthiness, not `!== null`: an empty reason is no reason, and
+                statusLabel("") renders the word "Unknown" into the header. */}
+            {vault.frozen_reason && (
               <Badge tone="caution">
                 <Snowflake /> {statusLabel(vault.frozen_reason)}
               </Badge>

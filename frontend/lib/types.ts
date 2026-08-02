@@ -234,7 +234,9 @@ export type IndependentVerifier = {
   claims_unsupported: number;
   supported: VerifiedClaim[];
   unsupported: VerifiedClaim[];
-  risk_flags: string[];
+  /** The analyst's own flags, echoed here. NOT a verifier finding — the
+   *  verifier checks evidence-ID citations, and a flag has none to check. */
+  analyst_risk_flags_unverified: string[];
   model_output_schema_valid: boolean;
   model_influenced_amounts: boolean;
   verdict: "NO_MODEL_ANALYSIS" | "CONTRADICTIONS_FOUND" | "CLAIMS_TRACE_TO_EVIDENCE";

@@ -347,12 +347,14 @@ function KpiGrid({ data }: { data: SystemIntelligence }) {
       <KpiCard href="#pipeline">
         <Metric
           label="Requests processed"
+          hint="The three figures below partition this total by final outcome: an application referred to a human and then approved is counted once, under approved."
           value={<EnvelopeValue envelope={data.summary.requests_processed} label />}
           sub={
             <span>
               <EnvelopeValue envelope={data.summary.approvals} /> approved ·{" "}
               <EnvelopeValue envelope={data.summary.controlled_rejections} /> controlled
-              rejections · <EnvelopeValue envelope={data.summary.human_reviews} /> human review
+              rejections · <EnvelopeValue envelope={data.summary.human_reviews} /> awaiting
+              human review
             </span>
           }
         />

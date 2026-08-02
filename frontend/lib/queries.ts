@@ -213,8 +213,11 @@ function useInvalidateAfterWrite() {
 export function useReviewApplication(applicationId: string) {
   const invalidate = useInvalidateAfterWrite();
   return useMutation({
-    mutationFn: (body: { action: "APPROVE" | "REJECT"; approved_limit_minor?: number; notes?: string }) =>
-      api.reviewApplication(applicationId, body),
+    mutationFn: (body: {
+      action: "APPROVE" | "REDUCE" | "REJECT";
+      amount_minor?: number;
+      notes?: string;
+    }) => api.reviewApplication(applicationId, body),
     onSuccess: () =>
       invalidate([
         keys.applications,

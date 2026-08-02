@@ -1,15 +1,23 @@
 """Deterministic policy evaluation.
 
-The authoritative runtime path calls OPA over HTTP with the Rego bundle in
-credence/policy/rego/. This module provides:
+**This is the evaluator that runs.** Every spend attempt in every deployment,
+sandbox included, is authorised here: `vault_ops.propose_transaction` calls
+`evaluate_transaction_policy` in-process, and the `PolicyDecision` it records
+carries `engine="local"`.
 
-1. the exact input-document shape shared with OPA, and
-2. a fail-closed local evaluator with identical semantics, used when the
-   deployment runs the degraded/CPU profile and in unit tests.
+The rules are the mirror of the Rego bundle in credence/policy/rego/, and the
+input document has OPA's shape so the two can be diffed. An OPA sidecar
+container is deployed beside the API in the GCP sandbox, but **no request path
+makes an HTTP call to it** — it is health-probed for display and nothing more.
+`ReasonCode.POLICY_ENGINE_UNAVAILABLE` exists and is never raised, because
+there is no remote policy call that could time out.
 
-If OPA is configured and unreachable, callers must NOT fall back to this
-evaluator silently — they must deny with POLICY_ENGINE_UNAVAILABLE. The local
-evaluator is selected only by explicit configuration (LOCAL_DEV mode).
+This docstring previously said the authoritative path called OPA over HTTP and
+that this module was a degraded-profile fallback. That was not true of any
+deployment, and it made a security control look like it ran somewhere it did
+not. If a real OPA call is ever added, that is the point at which
+POLICY_ENGINE_UNAVAILABLE becomes reachable and callers must deny rather than
+silently falling back here.
 """
 
 from __future__ import annotations

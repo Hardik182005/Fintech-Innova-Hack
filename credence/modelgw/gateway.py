@@ -241,6 +241,32 @@ CRITIC_SYSTEM = (
 )
 
 
+# Deterministic prompt-injection signature.
+#
+# Also used outside the fixture gateway, to corroborate an
+# `instruction_in_evidence` flag raised by a real model. A model's own claim
+# that it saw an instruction is unverified model output like any other, and
+# the architecture does not let unverified model output be recorded as fact.
+INJECTION_PATTERN = re.compile(
+    r"ignore (all|previous|prior) instructions"
+    r"|system prompt"
+    r"|approve .*(loan|credit|crore|lakh)",
+    re.IGNORECASE,
+)
+
+
+def evidence_contains_instruction(evidence: dict[str, str]) -> bool:
+    """Whether any evidence item deterministically matches a known injection
+    signature.
+
+    Deliberately narrow. A false negative here never suppresses the model's
+    concern — an uncorroborated flag still routes the application to a human;
+    it is only recorded under a reason code that says the pattern matcher did
+    not agree, instead of asserting a prompt injection nobody can point to.
+    """
+    return any(INJECTION_PATTERN.search(text) for text in evidence.values())
+
+
 class FixtureModelGateway:
     """Deterministic, offline analyst used in tests and the degraded profile.
 
@@ -252,12 +278,7 @@ class FixtureModelGateway:
     profile = "fixture"
 
     _AMOUNT = re.compile(r"(?:₹|INR\s?)(\d[\d,]*(?:\.\d{1,2})?)")
-    _INJECTION = re.compile(
-        r"ignore (all|previous|prior) instructions"
-        r"|system prompt"
-        r"|approve .*(loan|credit|crore|lakh)",
-        re.IGNORECASE,
-    )
+    _INJECTION = INJECTION_PATTERN
 
     def analyze_task(self, task_description: str, evidence: dict[str, str]) -> TaskAnalysis:
         claims: list[ExtractedClaim] = []

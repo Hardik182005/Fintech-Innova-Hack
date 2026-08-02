@@ -132,7 +132,32 @@ def test_underwriting_detail_separates_advice_from_decision(client, seeded):
         assert set(claim["evidence_ids"]) <= evidence_ids
 
     assert detail["revenue_mandate"]["locked"] is True
-    assert detail["human_reviews"][0]["action"] == "APPROVE"
+
+    # Regression: an APPROVE carries no amount in the request — it means "the
+    # full deterministic cap" — and the review row stored that absent
+    # parameter, so the history read "Approve ₹0.00" against a ₹1,000 limit.
+    review = detail["human_reviews"][0]
+    assert review["action"] == "APPROVE"
+    assert review["amount_minor"] == engine["approved_limit_minor"] == 100_000
+
+
+def test_verifier_never_presents_analyst_flags_as_its_own(client, seeded):
+    """Regression: the verifier payload carried the analyst's `risk_flags`
+    under a bare `risk_flags` key, and the UI rendered that identical list a
+    second time under the heading "Verifier flags" — the same opinion shown
+    twice, reading as independent corroboration. The verifier checks claim ->
+    evidence-ID citations; a flag cites nothing, so it has nothing to check.
+    """
+    app_id = seeded["run"]["steps"][0]["application_id"]
+    detail = client.get(
+        f"/v1/credit-applications/{app_id}/underwriting", headers=seeded["auth"]
+    ).json()
+    verifier = detail["verifier"]
+
+    assert "risk_flags" not in verifier, "an unqualified key here implies a verifier finding"
+    echoed = verifier["analyst_risk_flags_unverified"]
+    # It is genuinely the analyst's list, not a recomputation.
+    assert echoed == (detail["ai_recommendation"] or {}).get("risk_flags", [])
 
 
 def test_underwriting_queue_buckets_by_state(client, seeded):
@@ -154,6 +179,31 @@ def test_human_review_cannot_exceed_deterministic_cap(client, seeded):
     assert r.json()["error"]["code"] == "POLICY_DENIED"
 
 
+def test_a_misnamed_amount_field_is_refused_not_ignored(client, demo_headers):
+    """Regression: the web client sent the reviewer's typed limit as
+    `approved_limit_minor`, which this endpoint does not declare. Pydantic
+    ignored it, amount_minor defaulted to 0, and action=APPROVE granted the
+    full engine cap — so a reviewer who typed a REDUCED limit granted the
+    whole thing, and the UI showed a success message. On the one endpoint
+    where a person moves an amount, an unknown field is an error.
+    """
+    org = client.post(
+        "/v1/organizations", json={"name": "Review Co", "owner_email": "rev@test.local"}
+    ).json()
+    auth = {"Authorization": f"Bearer {org['owner_api_token']}"}
+    run = client.post(
+        "/v1/demo/scenarios/happy-path", headers={**demo_headers, **auth}
+    ).json()
+    app_id = run["steps"][0]["application_id"]
+
+    r = client.post(
+        f"/v1/credit-applications/{app_id}/review",
+        json={"action": "APPROVE", "approved_limit_minor": 1, "notes": "typo'd field"},
+        headers=auth,
+    )
+    assert r.status_code == 422, "an unknown field on a money write must not be defaulted past"
+
+
 # -------------------------------------------------------------------- vaults --
 
 
@@ -166,6 +216,12 @@ def test_vault_detail_shows_the_spending_controls(client, seeded):
     assert detail["spent_minor"] == 100_000
     assert detail["per_transaction_limit_minor"] == 60_000
     assert detail["principal_outstanding_minor"] == 0
+
+    # Regression: the column defaults to "" and was serialised verbatim, so a
+    # never-frozen vault carried a reason-shaped empty string. Clients testing
+    # for null rendered a chip for it — a DEFAULTED vault displayed "Defaulted"
+    # beside a second badge reading "Unknown".
+    assert detail["frozen_reason"] is None
 
     # The agent may only pay pre-approved vendors, for bound purposes.
     allow = {row["vendor_id"]: row for row in detail["allowlist"]}
@@ -238,6 +294,30 @@ def test_policy_decisions_record_which_engine_refused(client, demo_headers):
     assert other and all(p["policy_version"] for p in other)
 
 
+def test_the_recorded_policy_engine_is_the_one_that_actually_ran(client, demo_headers):
+    """The second control is an in-process mirror of the Rego bundle, and the
+    record must say so.
+
+    An OPA sidecar is deployed beside the API in the GCP sandbox and the site
+    used to say it authorised every spend. Nothing calls it: propose_transaction
+    invokes evaluate_transaction_policy directly, so the decision that gets
+    written carries engine="local". Pinning the recorded name here means a
+    future claim that OPA enforced a spend has to change this test first.
+    """
+    org = client.post(
+        "/v1/organizations", json={"name": "Engine Truth Co", "owner_email": "et@test.local"}
+    ).json()
+    auth = {"Authorization": f"Bearer {org['owner_api_token']}"}
+    client.post("/v1/demo/scenarios/overspend", headers={**demo_headers, **auth})
+
+    blocked = client.get("/v1/transactions?status=DENIED", headers=auth).json()[0]
+    detail = client.get(f"/v1/transactions/{blocked['proposal_id']}", headers=auth).json()
+
+    bundle = [p for p in detail["policy_decisions"] if p["engine"] != "vault-rules"]
+    assert [p["engine"] for p in bundle] == ["local"]
+    assert all(p["policy_version"] == "credence.credit/v1" for p in bundle)
+
+
 def test_frozen_vault_surfaces_its_reason(client, demo_headers):
     org = client.post(
         "/v1/organizations", json={"name": "Split Co", "owner_email": "split@test.local"}
@@ -253,6 +333,10 @@ def test_frozen_vault_surfaces_its_reason(client, demo_headers):
     detail = client.get(f"/v1/vaults/{run['setup']['vault_id']}/detail", headers=auth).json()
     frozen = [e for e in detail["risk_events"] if e["event_type"] == "VAULT_FROZEN"]
     assert frozen and frozen[0]["severity"] == "HIGH"
+
+    # The other half of the empty-string fix: when there IS a reason, it must
+    # still arrive intact rather than being flattened away.
+    assert detail["frozen_reason"] == "split-payment pattern detected"
 
     blocked = [t for t in detail["transactions"] if t["status"] == "DENIED"]
     assert any("SPLIT_PATTERN_DETECTED" in t["reason_codes"] for t in blocked)
@@ -347,6 +431,26 @@ def test_dashboard_summary_matches_the_underlying_records(client, seeded):
     assert s["repayments"]["repayment_rate_ppm"] == 1_000_000  # 1 of 1 settled
     assert s["integrity"]["ledger_balanced"] is True
     assert s["integrity"]["audit_chain_intact"] is True
+
+
+def test_dashboard_counts_a_funded_application_as_approved(client, seeded):
+    """Regression: the dashboard reported `approved: 0, in_flight: 1` for a
+    funded book while simultaneously showing its approved limit in rupees.
+
+    APPROVED is transient — funding advances the application straight through
+    VAULT_CREATED to DISBURSEMENT_ENABLED — so matching the literal string put
+    every settled approval in the in-flight bucket.
+    """
+    app_status = client.get("/v1/credit-applications", headers=seeded["auth"]).json()[0]
+    assert app_status["status"] == "DISBURSEMENT_ENABLED"  # not the literal "APPROVED"
+
+    apps = client.get("/v1/dashboard/summary", headers=seeded["auth"]).json()["applications"]
+    assert apps["approved"] == 1
+    assert apps["in_flight"] == 0
+    assert apps["approved"] + apps["human_review"] + apps["rejected"] + apps["in_flight"] == (
+        apps["total"]
+    )
+    assert apps["approved_limit_minor"] > 0
 
 
 def test_dashboard_distinguishes_empty_from_zero(client):

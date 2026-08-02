@@ -134,13 +134,18 @@ if ($probePath -ne '/readyz') {
     throw "Startup probe path is '$probePath', expected '/readyz'. Refusing to leave a mis-probed GPU revision live."
 }
 
-& gcloud run services describe $Service --project=$Project --region=$Region --format=@'
-value(
-  status.latestReadyRevisionName,
-  spec.template.metadata.annotations['autoscaling.knative.dev/maxScale'],
-  spec.template.metadata.annotations['run.googleapis.com/ingress'],
-  spec.template.spec.containers[0].startupProbe.httpGet.path
-)
-'@
+# One field per call: gcloud's format parser rejects a multi-line value(...)
+# expression, and a failure here would otherwise mask a successful deploy.
+$checks = [ordered]@{
+    'ready revision' = 'status.latestReadyRevisionName'
+    'max instances'  = "spec.template.metadata.annotations['autoscaling.knative.dev/maxScale']"
+    'ingress'        = "metadata.annotations['run.googleapis.com/ingress']"
+    'probe path'     = 'spec.template.spec.containers[0].startupProbe.httpGet.path'
+}
+foreach ($label in $checks.Keys) {
+    $v = & gcloud run services describe $Service --project=$Project --region=$Region `
+        --format="value($($checks[$label]))"
+    Write-Host ("  {0,-15}: {1}" -f $label, $v)
+}
 
 Write-Host 'Startup probe path verified as /readyz' -ForegroundColor Green

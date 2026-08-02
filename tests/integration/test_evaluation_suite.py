@@ -445,6 +445,29 @@ def test_evaluation_requires_auth(client):
     assert client.post("/v1/system-intelligence/evaluate").status_code == 401
 
 
+def test_a_concurrent_run_is_refused_rather_than_queued(client, org):
+    """Regression: nothing bounded concurrent evaluation runs. Each holds a
+    database session for up to four minutes while blocking on a GPU that
+    serves at concurrency 1, and stacking them took an unrelated
+    GET /v1/agents to a 500 after 157.95s live. The second caller is told
+    immediately instead of piling on.
+    """
+    from credence.api import system_intelligence as si
+
+    assert si._EVALUATION_LOCK.acquire(blocking=False), "lock must rest released"
+    try:
+        r = client.post("/v1/system-intelligence/evaluate", headers=org["auth"])
+        assert r.status_code == 409
+        assert "already in progress" in r.json()["detail"]
+    finally:
+        si._EVALUATION_LOCK.release()
+
+    # And the guard does not leak: the next run proceeds normally.
+    assert client.post("/v1/system-intelligence/evaluate", headers=org["auth"]).status_code == 200
+    assert si._EVALUATION_LOCK.acquire(blocking=False), "lock must be released after a run"
+    si._EVALUATION_LOCK.release()
+
+
 def test_a_second_run_keeps_the_components_ok_without_double_counting(client, org, session):
     client.post("/v1/system-intelligence/evaluate", headers=org["auth"])
     client.post("/v1/system-intelligence/evaluate", headers=org["auth"])

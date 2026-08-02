@@ -30,12 +30,45 @@ from credence.finance_models import (
     UnderwritingFeatures,
 )
 from credence.modelgw import ModelGateway, ModelUnavailableError, RiskOpinion, TaskAnalysis
+from credence.modelgw.gateway import evidence_contains_instruction
 from credence.models import Agent, AgentStatus
 from credence.services.identity import verify_stored_passport
 from credence.state import application_transition
 from credence.telemetry import current_request_id, record_stage
-from credence.underwriting import DecisionInputs, compute_features, decide
+from credence.underwriting import (
+    INJECTION_FLAG,
+    UNCORROBORATED_INJECTION_FLAG,
+    DecisionInputs,
+    compute_features,
+    decide,
+)
 from credence.underwriting.scorecard import SCORECARD_VERSION
+
+
+def _corroborate_injection_flag(
+    model_flags: list[str], evidence_texts: dict[str, str]
+) -> list[str]:
+    """Keep every flag the model raised, but do not let its unverified word
+    alone be recorded as a detected prompt injection.
+
+    The model is told to report instructions found inside <evidence> as
+    `instruction_in_evidence`. Live, the 24B raised it on five of five
+    applications whose evidence was ordinary invoices and contracts, and each
+    one wrote PROMPT_INJECTION_SUSPECTED into an immutable decision receipt —
+    an assertion about an attack that never happened.
+
+    Every flag still routes the application to a human, so this cannot weaken
+    the control. What changes is which of the two reason codes the receipt
+    carries, and therefore whether the audit trail claims corroboration it
+    does not have.
+    """
+    if INJECTION_FLAG not in model_flags:
+        return list(model_flags)
+    if evidence_contains_instruction(evidence_texts):
+        return list(model_flags)
+    return [
+        UNCORROBORATED_INJECTION_FLAG if f == INJECTION_FLAG else f for f in model_flags
+    ]
 
 
 def create_task(
@@ -237,7 +270,9 @@ def evaluate_application(
                     task_description=session.get(Task, app.task_id).description,
                     evidence=evidence_texts,
                 )
-                ai_risk_flags = analysis.risk_flags
+                ai_risk_flags = _corroborate_injection_flag(
+                    analysis.risk_flags, evidence_texts
+                )
                 session.add(
                     LlmAnalysisRun(
                         application_id=app.id,
@@ -486,6 +521,13 @@ def review_application(
     app = session.get(CreditApplication, application_id)
     if app is None or app.status != "HUMAN_REVIEW_REQUIRED":
         raise CredenceError(ReasonCode.POLICY_DENIED, "application is not awaiting review")
+    # What the review actually granted, as opposed to what the caller asked
+    # for. An APPROVE carries no amount — it means "the full deterministic
+    # cap" — so recording the request parameter stored 0 against an approval
+    # that granted the whole limit. The review history rendered "Approve
+    # ₹0.00" beside a ₹1,000 approved limit, and the audit event said the
+    # same. A REJECT grants nothing, so 0 there is the truth.
+    granted = 0
     with record_stage(
         session, app.organization_id, current_request_id(), "HUMAN_REVIEW"
     ) as review_stage:
@@ -517,7 +559,7 @@ def review_application(
             application_id=application_id,
             reviewer_user_id=reviewer_user_id,
             action=action,
-            amount_minor=amount_minor,
+            amount_minor=granted,
             notes=notes,
         )
     )
@@ -526,7 +568,13 @@ def review_application(
         actor_type="USER",
         actor_id=reviewer_user_id,
         event_type="HUMAN_REVIEW",
-        payload={"application_id": application_id, "action": action, "amount_minor": amount_minor},
+        payload={
+            "application_id": application_id,
+            "action": action,
+            # The amount granted, not the amount requested — see `granted`.
+            "amount_minor": granted,
+            "requested_amount_minor": amount_minor,
+        },
         organization_id=app.organization_id,
         resource_id=application_id,
     )

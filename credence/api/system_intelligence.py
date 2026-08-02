@@ -12,6 +12,7 @@ participates in any financial figure.
 from __future__ import annotations
 
 import re
+import threading
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
@@ -414,13 +415,22 @@ def system_intelligence(
     review_rejected = sum(1 for r in reviews if r.action == "REJECT")
     denied = [p for p in proposals if p.status == "DENIED"]
 
+    # These three partition requests_processed by *final* outcome, so an
+    # application referred to a human and then approved belongs to approvals
+    # and nowhere else. This used to report len(reviews) as human_reviews,
+    # which counted the resolved ones a second time: six applications, all
+    # referred and all approved by the owner, rendered as "6 approved · 0
+    # controlled rejections · 6 human review" — twelve outcomes from six
+    # requests. referred_to_human was already computed here and unused.
+    awaiting_human = max(referred_to_human - review_approved - review_rejected, 0)
+
     summary = {
         "requests_processed": _ok(len(apps_window), "count"),
         "approvals": _ok(engine_approved + review_approved, "count"),
         # A rejection via policy is a controlled outcome — a pipeline success,
         # never an error (contract semantics).
         "controlled_rejections": _ok(engine_rejected + review_rejected, "count"),
-        "human_reviews": _ok(len(reviews), "count"),
+        "human_reviews": _ok(awaiting_human, "count"),
         # Both figures come from stage telemetry, which records failures as
         # well as successes; without it a "success rate" over recorded
         # successes would be a tautology, so it stays not_connected instead.
@@ -928,6 +938,26 @@ def system_intelligence(
 
 # -------------------------------------------------------- evaluation trigger --
 
+# One evaluation at a time per process.
+#
+# A run is ~60s warm and ~240s cold, and for that whole time it holds a
+# database session open while making blocking calls to a GPU that serves at
+# concurrency 1. Nothing stopped a second caller — or a judge clicking the
+# button twice — from starting another, and each additional run multiplies
+# the open transactions and queues more work behind the same single GPU.
+# Observed live: while one run was in flight, an unrelated GET /v1/agents
+# returned 500 after 157.95s.
+#
+# A lock rather than a queue: a caller who arrives during a run is told so
+# immediately and can read the results of the run already underway. Waiting
+# would just rebuild the pile-up behind a longer timeout.
+#
+# Process-local, which is the honest scope. The API runs at maxScale 3, so
+# this bounds concurrent runs per instance, not per deployment; a cluster-wide
+# bound needs an advisory lock in the database. It is recorded here rather
+# than implied to be stronger than it is.
+_EVALUATION_LOCK = threading.Lock()
+
 
 @intelligence_router.post("/system-intelligence/evaluate", tags=["monitoring"])
 def run_evaluation(
@@ -951,14 +981,30 @@ def run_evaluation(
     A model that cannot answer degrades the run: the deterministic metrics
     still record, the two model-backed metrics come back in skipped_metrics
     and stay "not_evaluated" rather than being reported as 0%.
+
+    Long-running and single-flight: expect ~60s warm and ~240s cold. Only one
+    run executes per API instance at a time; a caller arriving during a run
+    gets 409 immediately rather than queueing behind it.
     """
-    gateway = build_gateway(get_settings())
-    run = run_evaluation_suite(
-        session,
-        gateway=gateway,
-        organization_id=user.organization_id,
-        request_id=current_request_id(),
-    )
+    if not _EVALUATION_LOCK.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "an evaluation run is already in progress on this instance; "
+                "it takes up to four minutes from cold. Read the current "
+                "results from GET /v1/system-intelligence when it finishes."
+            ),
+        )
+    try:
+        gateway = build_gateway(get_settings())
+        run = run_evaluation_suite(
+            session,
+            gateway=gateway,
+            organization_id=user.organization_id,
+            request_id=current_request_id(),
+        )
+    finally:
+        _EVALUATION_LOCK.release()
     summary = run.summary()
     summary["scope"] = "platform"
     summary["organization_id"] = user.organization_id

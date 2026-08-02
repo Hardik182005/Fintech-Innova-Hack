@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from credence.audit import verify_chain
+from credence.config import get_settings
 from credence.errors import CredenceError
 from credence.finance_models import CreditDecision
 from credence.ledger import reconcile
@@ -61,13 +62,18 @@ def seed_demo_tenant(
         )
         organization_id, owner_user_id = org.id, owner.id
 
+    settings = get_settings()
     agent = identity.create_agent(
         session,
         organization_id=organization_id,
         owner_user_id=owner_user_id,
         name=agent_name,
-        model_provider="qwen",
-        model_name="qwen3:8b",
+        # The model this synthetic borrower agent runs on. It is read straight
+        # from the deployment's own configuration rather than hard-coded: the
+        # previous literal named qwen3:8b, which no deployment has ever pulled,
+        # so every seeded agent advertised a model that was not there.
+        model_provider=settings.model_provider,
+        model_name=settings.ollama_analyst_model,
         model_version_hash="sha256:demo-pinned",
     )
     _, signed = identity.issue_passport(

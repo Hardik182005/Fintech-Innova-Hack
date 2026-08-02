@@ -23,6 +23,30 @@ of many micro-packages — see ADR-001. Top-level: `credence/` (code), `tests/`,
 ### Phase 0 — inspect & plan ✅
 Preflight, plan, requirements matrix, ADRs 001–006, threat model, cost plan.
 
+### Update 2026-08-01 (evening)
+
+Phases 1–3 substantially complete and verified end-to-end; frontend delivered
+by the user (website-2.zip, Next.js 16) and integrated:
+
+- full §12 table set (`credence/finance_models.py`), state machines (§11),
+  underwriting features + integer-ppm scorecard + decision engine with
+  receipt (`credence/underwriting/`), service layer wiring passport → policy
+  → ledger → audit (`credence/services/`), §10 REST API with sandbox bearer
+  auth + tenant isolation, demo scenarios A–F, localization contract
+  (en/hi/bn/ta/te/kn), OpenAPI export;
+- Solidity `AgentRegistry` + `TaskCreditVault` with 15 Foundry tests
+  (fuzzing included) passing via the Foundry Docker image;
+- model gateway with local Ollama adapter (schema-constrained, fail-closed,
+  evidence-ID validation) and deterministic fixture profile; analyst tier is
+  qwen3:1.7b with thinking disabled (cost profile §16), critic reserved for
+  medium/high risk (Phase 4);
+- frontend: marketing page rebranded to CredenceAI; live `/console` page
+  (scenarios, metrics, risk events, audit chain, language selector) wired to
+  the API; verified in a real browser against Postgres;
+- test counts: 93 pytest + 9 OPA + 15 Foundry.
+
+Local port notes: API :8001 (8000 busy), Postgres host :5440 (5432/5433 busy).
+
 ### Phase 1 — backend foundation ✅ (initial slice)
 Done:
 - money primitives: integer minor units, lossless Decimal boundary (ADR-003);

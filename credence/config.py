@@ -82,7 +82,11 @@ class Settings(BaseSettings):
     # startup; a mismatch here is a silent 404 from Ollama at request time.
     ollama_analyst_model: str = "mistral-small3.2:24b-instruct-2506-q4_K_M"
     ollama_critic_model: str = "mistral-small3.2:24b-instruct-2506-q4_K_M"
-    ollama_embedding_model: str = "qwen3-embedding:0.6b"
+    # No embedding model setting: evidence retrieval is a tenant-scoped SQL
+    # selection on task_id, not a vector search, so nothing in this service
+    # embeds anything. The setting that used to sit here named a model no
+    # deployment ever downloaded — configuration claiming a capability the code
+    # does not have is how a stack ends up advertising retrieval it never ran.
     model_timeout_seconds: float = 120.0
     model_max_output_tokens: int = 1024
     # Serving context window, sent per request. Setting OLLAMA_CONTEXT_LENGTH
@@ -108,6 +112,11 @@ class Settings(BaseSettings):
     # forgot to override it would share the same one. Absent token means the
     # demo surface stays closed.
     demo_reset_token: str = ""
+
+    # Destructive reset drops and recreates every table for every tenant, so it
+    # is gated on a second credential the web tier is never given. Absent — the
+    # default — means no request can reach it, whatever demo token it carries.
+    demo_admin_token: str = ""
 
     # Voice is disabled by default and is never on the critical path.
     voice_provider: str = "disabled"  # elevenlabs | disabled

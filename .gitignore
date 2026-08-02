@@ -25,6 +25,13 @@ service-account*.json
 *.tfstate.backup
 *.tfvars
 !*.example.tfvars
+# A saved plan is not a summary — it embeds the resolved values of every
+# variable, including ones sourced from secrets. It never commits.
+*.tfplan
+
+# Captured run output. Regenerate it by running the script that produced it;
+# committing it makes stale evidence look current.
+artifacts/
 
 # Foundry
 contracts/out/

@@ -40,6 +40,7 @@ from credence.finance_models import (
 )
 from credence.ledger import reconcile
 from credence.models import Agent, AgentPassport, AuditEvent, Organization, User, Vendor
+from credence.state import APPROVED_APPLICATION_STATUSES, DECIDED_APPLICATION_STATUSES
 from credence.underwriting import compute_features
 
 read_router = APIRouter(prefix="/v1")
@@ -558,7 +559,14 @@ def underwriting_detail(
         "claims_unsupported": len(unsupported),
         "supported": supported,
         "unsupported": unsupported,
-        "risk_flags": analysis.get("risk_flags", []) if isinstance(analysis, dict) else [],
+        # The analyst's own flags, passed through untouched. The verifier does
+        # not corroborate them: it checks claim -> evidence-ID citations, and a
+        # risk flag carries no citation to check. Named for what it is, because
+        # under the old key the panel rendered this identical list a second
+        # time as "Verifier flags", which reads as independent agreement.
+        "analyst_risk_flags_unverified": (
+            analysis.get("risk_flags", []) if isinstance(analysis, dict) else []
+        ),
         "model_output_schema_valid": bool(analyst.schema_valid) if analyst else False,
         "model_influenced_amounts": False,
         "verdict": (
@@ -744,7 +752,11 @@ def _vault_row(v: CreditVault, agents: dict[str, str], tasks: dict[str, str]) ->
         "reserve_drawn_minor": v.reserve_drawn_minor,
         "transaction_count": v.transaction_count,
         "max_transactions": v.max_transactions,
-        "frozen_reason": v.frozen_reason,
+        # The column is non-nullable and defaults to "", so an unfrozen vault
+        # would otherwise serialise a reason-shaped empty string. Clients that
+        # test for null then render a chip for it: a DEFAULTED vault showed a
+        # "Defaulted" badge next to a second badge reading "Unknown".
+        "frozen_reason": v.frozen_reason or None,
         "expires_at": _iso(v.expires_at),
         "created_at": _iso(v.created_at),
         "updated_at": _iso(v.updated_at),
@@ -1169,11 +1181,11 @@ def dashboard_summary(
         },
         "applications": {
             "total": len(apps),
-            "approved": sum(1 for a in apps if a.status == "APPROVED"),
+            "approved": sum(1 for a in apps if a.status in APPROVED_APPLICATION_STATUSES),
             "human_review": sum(1 for a in apps if a.status == "HUMAN_REVIEW_REQUIRED"),
             "rejected": sum(1 for a in apps if a.status == "REJECTED"),
             "in_flight": sum(
-                1 for a in apps if a.status not in ("APPROVED", "REJECTED", "HUMAN_REVIEW_REQUIRED")
+                1 for a in apps if a.status not in DECIDED_APPLICATION_STATUSES
             ),
             "requested_minor": sum(a.requested_minor for a in apps),
             "approved_limit_minor": sum(d.approved_limit_minor for d in decisions.values()),

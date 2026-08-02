@@ -25,6 +25,19 @@ APPLICATION_TRANSITIONS: dict[str, set[str]] = {
     "REJECTED": set(),
 }
 
+# Statuses that mean "this application was approved". APPROVED is a transient
+# step: funding immediately advances it to VAULT_CREATED and then to
+# DISBURSEMENT_ENABLED, so a settled approval is almost never sitting on the
+# literal string "APPROVED". Anything counting approvals must use this set, or
+# it reports a funded book as still in flight.
+APPROVED_APPLICATION_STATUSES = frozenset({"APPROVED", "VAULT_CREATED", "DISBURSEMENT_ENABLED"})
+
+# Decided one way or the other — nothing here is still moving.
+DECIDED_APPLICATION_STATUSES = APPROVED_APPLICATION_STATUSES | {
+    "REJECTED",
+    "HUMAN_REVIEW_REQUIRED",
+}
+
 VAULT_TRANSITIONS: dict[str, set[str]] = {
     "CREATED": {"ACTIVE", "FROZEN", "EXPIRED"},
     "ACTIVE": {"SPENDING", "TASK_COMPLETED", "TASK_FAILED", "FROZEN", "EXPIRED"},

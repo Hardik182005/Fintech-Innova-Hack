@@ -25,6 +25,13 @@ AUTO_APPROVE_MAX_PD_PPM = 350_000  # PD above 35% can never auto-approve
 FEE_RATE_PPM = 50_000  # 5% flat sandbox fee on approved principal
 DECISION_VERSION = "decision-v1"
 
+# A prompt injection the model reported AND a deterministic pattern match
+# confirmed, versus one only the model asserts. Both force human review — the
+# control is identical — but only the first may be written into a decision
+# receipt as a detected injection. See services.credit._corroborate_injection_flag.
+INJECTION_FLAG = "instruction_in_evidence"
+UNCORROBORATED_INJECTION_FLAG = "instruction_in_evidence_uncorroborated"
+
 
 @dataclass
 class DecisionInputs:
@@ -97,9 +104,14 @@ def decide(inputs: DecisionInputs) -> DecisionResult:
         if not inputs.ai_checks_available:
             decision = "HUMAN_REVIEW_REQUIRED"
             reasons.append("AI_EVIDENCE_CHECKS_UNAVAILABLE")
-        if "instruction_in_evidence" in inputs.ai_risk_flags:
+        if INJECTION_FLAG in inputs.ai_risk_flags:
             decision = "HUMAN_REVIEW_REQUIRED"
             reasons.append("PROMPT_INJECTION_SUSPECTED")
+        if UNCORROBORATED_INJECTION_FLAG in inputs.ai_risk_flags:
+            # Same outcome, weaker claim: the model raised a concern that no
+            # deterministic check could confirm. A human still looks at it.
+            decision = "HUMAN_REVIEW_REQUIRED"
+            reasons.append("PROMPT_INJECTION_SUSPECTED_UNCORROBORATED")
         if inputs.features.is_first_credit:
             decision = "HUMAN_REVIEW_REQUIRED"
             reasons.append("FIRST_CREDIT_FOR_AGENT")

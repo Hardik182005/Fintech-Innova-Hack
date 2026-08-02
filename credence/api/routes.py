@@ -6,11 +6,17 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from credence.api.deps import get_current_user, get_engine, get_session, require_demo_token
+from credence.api.deps import (
+    get_current_user,
+    get_engine,
+    get_session,
+    require_demo_admin_token,
+    require_demo_token,
+)
 from credence.audit import verify_chain
 from credence.config import get_settings
 from credence.errors import CredenceError
@@ -385,6 +391,18 @@ def decision_receipt(
 
 
 class ReviewBody(BaseModel):
+    # extra="forbid" on the one endpoint where a person moves an amount.
+    #
+    # Pydantic ignores unknown fields by default, and the web client was
+    # sending the reviewer's typed limit as `approved_limit_minor` — a name
+    # this model does not declare. It was dropped in silence, amount_minor
+    # fell back to 0, and action=APPROVE granted the full engine cap. A
+    # reviewer who typed a REDUCED limit and pressed Approve therefore
+    # granted the whole thing, and the UI reported success.
+    #
+    # A misnamed field on a financial write must be a 422, not a default.
+    model_config = ConfigDict(extra="forbid")
+
     action: str = Field(pattern="^(APPROVE|REDUCE|REJECT)$")
     amount_minor: int = Field(default=0, ge=0)
     notes: str = ""
@@ -449,7 +467,8 @@ def get_vault(
         "principal_outstanding_minor": vault.principal_outstanding_minor,
         "fee_due_minor": vault.fee_due_minor,
         "expires_at": vault.expires_at.isoformat(),
-        "frozen_reason": vault.frozen_reason,
+        # "" is absence, not a reason — see the note in read_routes.
+        "frozen_reason": vault.frozen_reason or None,
     }
 
 
@@ -746,8 +765,14 @@ def translate_explanation(
 demo_router = APIRouter(prefix="/v1/demo", dependencies=[Depends(require_demo_token)])
 
 
-@demo_router.post("/reset", tags=["demo"])
+@demo_router.post("/reset", tags=["demo"], dependencies=[Depends(require_demo_admin_token)])
 def demo_reset():
+    """Drop and recreate every table. Platform-wide, not per-tenant.
+
+    Guarded by a second credential (X-Demo-Admin-Token) that no browser-facing
+    service holds, because the demo token alone is attached to demo requests by
+    the web proxy on any visitor's behalf.
+    """
     from credence.db import Base
 
     engine = get_engine()

@@ -3,8 +3,8 @@ import { Container, Pill, SectionHeading } from "@/components/primitives";
 
 /**
  * Live deployed architecture on GCP. Applied via Terraform in gated stages.
- * Private Cloud Run services, private Cloud SQL PostgreSQL, OPA policy sidecar,
- * and private NVIDIA L4 GPU inference engine.
+ * Private Cloud Run services, private Cloud SQL PostgreSQL, a deterministic
+ * Rego-mirror policy engine, and private NVIDIA L4 GPU inference engine.
  */
 
 const COMPONENTS = [
@@ -17,14 +17,19 @@ const COMPONENTS = [
   {
     icon: Database,
     title: "Private Cloud SQL PostgreSQL",
-    desc: "System of record running on a private IP. Double-entry journal, pgvector evidence retrieval, hash-chained audit events, and immutable rows.",
-    tags: ["Cloud SQL", "PostgreSQL 15", "pgvector"],
+    desc: "System of record running on a private IP. Double-entry journal, tenant-scoped evidence retrieval, hash-chained audit events, and immutable rows.",
+    tags: ["Cloud SQL", "PostgreSQL 15", "Private IP"],
   },
   {
     icon: Scale,
-    title: "Open Policy Agent",
-    desc: "A Rego policy bundle evaluated in an OPA container sidecar for each spend attempt. Enforces fail-closed tenant authorization.",
-    tags: ["Rego", "Sidecar", "Fail-closed"],
+    title: "Deterministic policy engine",
+    // Says which evaluator actually runs. An OPA sidecar container is deployed
+    // beside the API, but no request path calls it: every spend is authorised
+    // in-process by a mirror of the Rego bundle, and the decision it records
+    // reports engine="local". Naming OPA as the enforcer would name a control
+    // that does not run.
+    desc: "Every spend attempt is authorised against a versioned Rego rule set (credence.credit/v1) before it can settle. The deployed evaluator is an in-process mirror of that bundle sharing OPA's input-document shape; missing or malformed input denies.",
+    tags: ["Rego rules", "In-process evaluator", "Fail-closed"],
   },
   {
     icon: Cpu,
@@ -36,7 +41,7 @@ const COMPONENTS = [
 
 const GCP = [
   "Google Cloud Run for API (credence-api) & Web Frontend (credence-web)",
-  "Cloud SQL PostgreSQL instance (credence-pg) on Private IP with pgvector",
+  "Cloud SQL PostgreSQL instance (credence-pg) on Private IP",
   "Cloud Run NVIDIA L4 GPU Service (credence-inference) — private, scales to zero",
   "Ed25519 passport signing key held in Secret Manager, injected at startup",
 ];
@@ -49,7 +54,7 @@ export function Deployment() {
           align="center"
           eyebrow="Architecture"
           title="Applied Terraform & Live GCP Sandbox Stack"
-          description="The entire sandbox architecture is provisioned with Terraform on GCP — Cloud Run services, private Cloud SQL PostgreSQL, OPA policy sidecar, and private NVIDIA L4 GPU inference. Test credits only; no real money moves."
+          description="The entire sandbox architecture is provisioned with Terraform on GCP — Cloud Run services, private Cloud SQL PostgreSQL, a deterministic Rego-mirror policy engine, and private NVIDIA L4 GPU inference. Test credits only; no real money moves."
         />
 
         <div className="mt-12 grid gap-6 sm:grid-cols-2">

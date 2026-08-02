@@ -130,10 +130,24 @@ export const getUnderwriting = (applicationId: string) =>
   );
 export const getUnderwritingQueue = () => request<UnderwritingQueue>("/v1/underwriting/queue");
 
-/** Owner decision on an application held for human review. */
+/**
+ * Owner decision on an application held for human review.
+ *
+ * Field names are the API's, exactly: this sent `approved_limit_minor`, which
+ * the endpoint does not declare, so the reviewer's typed amount was dropped
+ * and APPROVE granted the full engine cap regardless. The endpoint now
+ * rejects unknown fields outright rather than defaulting past them.
+ *
+ * APPROVE grants the engine's cap and ignores any amount. Granting LESS is a
+ * REDUCE and carries `amount_minor`.
+ */
 export const reviewApplication = (
   applicationId: string,
-  body: { action: "APPROVE" | "REJECT"; approved_limit_minor?: number; notes?: string },
+  body: {
+    action: "APPROVE" | "REDUCE" | "REJECT";
+    amount_minor?: number;
+    notes?: string;
+  },
 ) => post(`/v1/credit-applications/${encodeURIComponent(applicationId)}/review`, body);
 
 // ------------------------------------------------------------------- vaults --

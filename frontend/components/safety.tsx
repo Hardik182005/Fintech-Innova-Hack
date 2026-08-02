@@ -41,7 +41,7 @@ const PILLARS: Pillar[] = [
     desc: "The financial outcome is produced by deterministic code from recorded inputs, so the same inputs give the same answer every time.",
     points: [
       "A scorecard computes the limit; no model output enters the arithmetic",
-      "Open Policy Agent evaluates a versioned Rego bundle per spend",
+      "A versioned Rego rule set (credence.credit/v1) is evaluated per spend",
       "Every decision keeps its reason codes and a receipt hash",
     ],
   },

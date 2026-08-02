@@ -59,7 +59,7 @@ const COLUMNS: Column[] = [
     kicker: "Enforcing",
     title: "What the controls enforce",
     does: [
-      "Open Policy Agent authorises each individual spend",
+      "A versioned Rego rule set authorises each individual spend",
       "The vault restricts the counterparty, the cap and the window",
       "The waterfall sequences repayment before the owner is paid",
       "The hash chain records the decision and every movement of money",
@@ -67,7 +67,11 @@ const COLUMNS: Column[] = [
     neverTitle: "Never",
     never: [
       "Trust the agent to respect a limit voluntarily",
-      "Fall back to a local guess when the policy engine is unreachable",
+      // Was "Fall back to a local guess when the policy engine is unreachable",
+      // which describes the failure handling of a remote call the deployed
+      // system does not make. What is true, and testable, is the deny-by-
+      // default rule the evaluator actually implements.
+      "Treat missing or malformed policy input as permission",
     ],
   },
 ];
@@ -84,8 +88,8 @@ export function GoverningRule() {
           eyebrow="The governing rule"
           title={
             <>
-              LLMs advise; deterministic code decides; OPA authorizes; the vault
-              enforces; humans approve exceptions.
+              LLMs advise; deterministic code decides; policy authorizes; the
+              vault enforces; humans approve exceptions.
             </>
           }
           description="An LLM is never permitted to move money or set a limit. It produces an opinion — a stance and a rationale, with no amounts in it at all. Everything downstream of that opinion is ordinary, testable code."

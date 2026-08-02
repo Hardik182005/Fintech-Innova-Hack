@@ -65,10 +65,10 @@ const TABS: Tab[] = [
     icon: Vault,
     title: "Money that can only go where it was approved to go",
     description:
-      "Approved credit lands in a vault that can pay allow-listed counterparties only, under a cap, inside a time window. Every spend attempt is authorised by Open Policy Agent before it can settle.",
+      "Approved credit lands in a vault that can pay allow-listed counterparties only, under a cap, inside a time window. Every spend attempt is authorised against a versioned Rego rule set before it can settle.",
     bullets: [
       "Vendor allow-list, purpose code, per-transaction and per-task caps, velocity and split-pattern checks",
-      "If the policy engine is unreachable the call refuses — it does not fall through to a local guess",
+      "Missing or malformed policy input denies the spend — there is no permissive default",
       "The restriction is enforced at the point of payment, not requested of the agent",
     ],
   },

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from hmac import compare_digest
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.engine import Engine
@@ -64,3 +65,18 @@ def require_demo_token(x_demo_token: str = Header(default="")) -> None:
         raise HTTPException(status_code=403, detail="demo endpoints are sandbox-only")
     if x_demo_token != settings.demo_reset_token:
         raise HTTPException(status_code=403, detail="invalid demo token")
+
+
+def require_demo_admin_token(x_demo_admin_token: str = Header(default="")) -> None:
+    """Second gate for the destructive reset.
+
+    The demo token alone is not enough: the web tier holds it and attaches it to
+    demo requests on the browser's behalf, so anything guarded by it is reachable
+    by any visitor. Dropping every tenant's tables must require a credential no
+    browser-facing service has. Unset — the default — closes the route outright.
+    """
+    settings = get_settings()
+    if not settings.demo_admin_token:
+        raise HTTPException(status_code=403, detail="reset is disabled in this deployment")
+    if not compare_digest(x_demo_admin_token, settings.demo_admin_token):
+        raise HTTPException(status_code=403, detail="invalid admin token")

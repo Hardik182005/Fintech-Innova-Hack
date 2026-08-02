@@ -78,9 +78,12 @@ variable "gpu_primary_model" {
 }
 
 
+# No default on purpose. The previous one named a model no deployment ever
+# pulled, so enabling the fallback would have configured a tag that 404s at
+# request time. Turning the fallback on now forces a deliberate, verified tag.
 variable "cpu_fallback_model" {
   type    = string
-  default = "qwen3:1.7b"
+  default = null
 }
 
 # Optional CPU inference service. Off by default: it is a standing cost, and

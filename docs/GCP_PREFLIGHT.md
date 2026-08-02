@@ -21,3 +21,18 @@ Decisions:
   before the first Terraform plan.
 - No GPU or paid accelerator will be provisioned before quota verification and
   explicit user budget approval (spec §2.9).
+
+## Update — 2026-08-01 (evening): preflight completed
+
+| Check | Result |
+|---|---|
+| IAM on `innova-hack` | `rajeshinduja2015@gmail.com` = `roles/owner` (the active account). No role for other accounts. |
+| APIs enabled today | run, sqladmin, secretmanager, cloudkms, artifactregistry, compute, vpcaccess, servicenetworking, cloudbuild (operation finished successfully; API enablement is free) |
+| Cloud Run in `asia-south1` | Available ✔ |
+| CPU quota (asia-south1) | CPUS 100, E2_CPUS 400, N2_CPUS 400 — ample for CPU inference and services |
+| GPU quota (asia-south1) | **NVIDIA_T4_GPUS = 1, NVIDIA_L4_GPUS = 1** — one single-GPU VM is possible without a quota request |
+| Resources created | **None.** API enablement only. |
+
+Gate before Phase 5 apply: user budget approval for any billable resource,
+GPU VM included (spec §2.9). Terraform will be authored and planned, not
+applied, until that approval is recorded here.

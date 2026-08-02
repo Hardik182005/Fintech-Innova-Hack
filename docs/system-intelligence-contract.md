@@ -47,7 +47,7 @@ Rules (spec §23, non-negotiable):
     "requests_processed": "envelope count",
     "approvals": "envelope count",
     "controlled_rejections": "envelope count",
-    "human_reviews": "envelope count",
+    "human_reviews": "envelope count — still AWAITING a human decision",
     "true_errors": "envelope count",
     "pipeline_success_rate": "envelope ppm",
     "prevented_exposure_minor": "envelope minor",

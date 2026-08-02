@@ -376,11 +376,16 @@ function VerifierPanel({ verifier }: { verifier: IndependentVerifier }) {
           </div>
         )}
 
-        {verifier.risk_flags.length > 0 && (
+        {verifier.analyst_risk_flags_unverified.length > 0 && (
           <div>
-            <p className="eyebrow mb-1.5">Verifier flags</p>
+            <p className="eyebrow mb-1.5">Analyst flags — echoed, not verified</p>
+            <p className="mb-1.5 text-[0.6875rem] leading-relaxed text-muted">
+              The same flags the analyst raised above. The verifier checks claims against
+              stored evidence IDs; a flag cites none, so there is nothing here it can
+              independently confirm or contradict.
+            </p>
             <div className="flex flex-wrap gap-1.5">
-              {verifier.risk_flags.map((flag) => (
+              {verifier.analyst_risk_flags_unverified.map((flag) => (
                 <Badge key={flag} tone="caution" size="sm">
                   {statusLabel(flag)}
                 </Badge>

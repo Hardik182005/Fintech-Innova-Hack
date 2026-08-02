@@ -15,9 +15,13 @@ import { useReviewApplication } from "@/lib/queries";
  * product where a person moves an amount, so the form takes rupees (what a
  * person types) and converts to minor units exactly once, on submit.
  *
- * The approval amount defaults to the engine's limit — a reviewer approving
- * more than the deterministic engine allowed is a deliberate act, typed by
- * hand, and the backend still re-checks it against policy.
+ * The amount defaults to the engine's limit. Leaving it there is an APPROVE;
+ * lowering it is a REDUCE, which is a different action to the API and has to
+ * be sent as one. This form previously sent every approval as APPROVE with
+ * the amount under a field name the endpoint did not declare, so a reviewer
+ * who typed a lower limit granted the full engine cap instead — silently,
+ * with a success message. The API is the authority on the ceiling and
+ * refuses anything above it; that error surfaces below.
  */
 export function ReviewControls({
   applicationId,
@@ -37,14 +41,24 @@ export function ReviewControls({
   const amountMinor = rupeeInputToMinor(amount);
   const amountValid = amountMinor !== null;
 
-  function decide(action: "APPROVE" | "REJECT") {
-    review.mutate({
-      action,
-      ...(action === "APPROVE" && amountMinor !== null
-        ? { approved_limit_minor: amountMinor }
-        : {}),
-      ...(notes.trim() !== "" ? { notes: notes.trim() } : {}),
-    });
+  function decide(intent: "APPROVE" | "REJECT") {
+    const notesPart = notes.trim() !== "" ? { notes: notes.trim() } : {};
+
+    if (intent === "REJECT") {
+      review.mutate({ action: "REJECT", ...notesPart });
+      return;
+    }
+    // APPROVE means "the engine's cap" and carries no amount, so it may only
+    // be used when the reviewer left the figure alone. Any other number is
+    // sent as the amount it is — below the cap the API reduces to it, above
+    // the cap the API refuses and says so. Neither may be quietly rounded to
+    // the cap, which is what sending everything as APPROVE did.
+    const unchanged = engineLimitMinor === null || amountMinor === engineLimitMinor;
+    review.mutate(
+      unchanged
+        ? { action: "APPROVE", ...notesPart }
+        : { action: "REDUCE", amount_minor: amountMinor as number, ...notesPart },
+    );
   }
 
   return (

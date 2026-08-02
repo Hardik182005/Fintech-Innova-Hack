@@ -202,7 +202,7 @@ export function DashboardMock() {
             />
             <Stage
               tone="policy"
-              kicker="OPA · enforcing"
+              kicker="policy · enforcing"
               title="Vault opened"
               detail="2 vendors · 48h window"
             />

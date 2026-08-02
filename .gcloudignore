@@ -1,0 +1,43 @@
+# Build context uploaded to Cloud Build.
+#
+# Without this file gcloud falls back to .gitignore semantics, which still
+# uploads ~2GB of frontend assets, Terraform providers, archives and binaries
+# that no server image needs. Keeping the context small also keeps secrets and
+# local state out of the build entirely.
+
+.git
+.gitignore
+
+# Never upload credentials or local state.
+.env
+.env.*
+users.json
+*.pem
+*.key
+*.log
+terraform.tfstate
+terraform.tfstate.*
+*.tfplan
+
+# Not needed by the API or inference images.
+frontend
+infra
+docs
+tests
+contracts
+scripts
+activity
+models
+artifacts
+
+# Large local artifacts and binaries.
+*.zip
+*.pdf
+*.exe
+node_modules
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache

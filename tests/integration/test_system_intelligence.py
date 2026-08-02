@@ -305,7 +305,19 @@ def test_credit_engine_and_summary_match_the_seeded_run(client, seeded):
     assert summary["requests_processed"]["value"] == 1
     assert summary["approvals"]["value"] == 1
     assert summary["controlled_rejections"]["value"] == 0
-    assert summary["human_reviews"]["value"] == 1
+    # The seeded application was referred to a human AND then approved by the
+    # owner, so nothing is still awaiting review. It used to report 1 here —
+    # counting the same application under both approvals and human_reviews.
+    assert summary["human_reviews"]["value"] == 0
+    # Regression: the three outcomes partition the total. Live, six referred
+    # and owner-approved applications displayed as "6 approved · 0 controlled
+    # rejections · 6 human review", i.e. twelve outcomes from six requests.
+    assert (
+        summary["approvals"]["value"]
+        + summary["controlled_rejections"]["value"]
+        + summary["human_reviews"]["value"]
+        == summary["requests_processed"]["value"]
+    )
 
     assert body["models"]["provider"] == "fixture"
     # Verified from config: only local gateways exist, so zero is structural.

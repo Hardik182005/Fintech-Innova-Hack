@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Newsreader, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { Orb } from "@/components/orb";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -65,7 +66,13 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${newsreader.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-white font-sans text-ink">{children}</body>
+      <body className="min-h-full bg-white font-sans text-ink">
+        {children}
+        {/* Mounted on the layout rather than the marketing page so it is
+            reachable from the console too, where a visitor is most likely to
+            have a question and least likely to scroll back to find an answer. */}
+        <Orb />
+      </body>
     </html>
   );
 }

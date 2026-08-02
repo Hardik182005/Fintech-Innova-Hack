@@ -70,6 +70,13 @@ const LABELS: Record<string, string> = {
   TASK_FAILED: "Task failed",
   ALLOW: "Allowed",
   DENY: "Denied",
+  // The two injection codes must not read alike. Only the first means a
+  // deterministic check agreed with the model; the second is the model's
+  // concern alone, which is still enough to force review.
+  PROMPT_INJECTION_SUSPECTED: "Prompt injection suspected",
+  PROMPT_INJECTION_SUSPECTED_UNCORROBORATED: "Prompt injection — model only, unconfirmed",
+  INSTRUCTION_IN_EVIDENCE: "Instruction in evidence",
+  INSTRUCTION_IN_EVIDENCE_UNCORROBORATED: "Instruction in evidence — unconfirmed",
 };
 
 export function statusTone(status: string | null | undefined): BadgeTone {

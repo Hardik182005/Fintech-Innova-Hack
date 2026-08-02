@@ -19,6 +19,21 @@ import { clearSession, resolveSession, SessionError } from "@/lib/server/session
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/**
+ * Demo subpaths this proxy is willing to attach the demo token to.
+ *
+ * The token is a privileged credential: it is what makes `/v1/demo/*` callable
+ * at all. Attaching it to whatever the browser asks for hands that privilege to
+ * any visitor. `/v1/demo/reset` drops and recreates every table in the shared
+ * sandbox database with no tenant scoping, so a single same-origin fetch from a
+ * product page destroyed every workspace on the deployment — observed live,
+ * HTTP 200 in 213s. Only the scenario runner is seeding, per-tenant, and safe
+ * to expose; everything else under /v1/demo is refused here.
+ */
+export function isAllowedDemoPath(segments: string[]): boolean {
+  return segments[2] === "scenarios" && segments.length === 4;
+}
+
 /** Upstream headers worth returning. Everything else is dropped rather than
  *  relayed, so upstream server banners and cookies stay server-side. */
 const PASSTHROUGH_RESPONSE_HEADERS = ["content-type"];
@@ -61,6 +76,10 @@ async function proxy(
   }
   if (MUTATING_METHODS.has(request.method) && isCrossSite(request)) {
     return problem("CROSS_SITE_BLOCKED", "That request was blocked.", 403);
+  }
+  if (segments[1] === "demo" && !isAllowedDemoPath(segments)) {
+    // Not a 403: from the browser's side this surface simply does not exist.
+    return problem("NOT_PROXIED", "That resource is not available here.", 404);
   }
 
   const target = `${backendBase()}/${segments.join("/")}${request.nextUrl.search}`;
