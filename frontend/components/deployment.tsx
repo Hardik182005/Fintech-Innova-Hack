@@ -29,16 +29,16 @@ const COMPONENTS = [
   {
     icon: Cpu,
     title: "Private GPU Inference Engine",
-    desc: "A private Cloud Run NVIDIA L4 GPU service (credence-inference) is deployed for schema-constrained local inference. Model verification pending — the serving model is not yet independently verified, and underwriting currently runs on the deterministic engine.",
-    tags: ["NVIDIA L4 GPU", "Model verification pending", "Schema-constrained"],
+    desc: "A private Cloud Run NVIDIA L4 GPU service (credence-inference) serving Mistral Small 3.2 24B Instruct (Q4_K_M) under schema-constrained decoding at an 8K context, verified loaded on GPU by digest before the service reports ready. Its output is advisory only — it can raise concerns and force human review, but the deterministic engine sets every limit and no model output can approve credit.",
+    tags: ["NVIDIA L4 GPU", "Mistral Small 3.2 24B (Q4_K_M)", "Advisory only"],
   },
 ];
 
 const GCP = [
   "Google Cloud Run for API (credence-api) & Web Frontend (credence-web)",
   "Cloud SQL PostgreSQL instance (credence-pg) on Private IP with pgvector",
-  "Cloud Run NVIDIA L4 GPU Service (credence-inference) — model verification pending",
-  "Cloud KMS asymmetric key rings for passport signing and evidence encryption",
+  "Cloud Run NVIDIA L4 GPU Service (credence-inference) — private, scales to zero",
+  "Ed25519 passport signing key held in Secret Manager, injected at startup",
 ];
 
 export function Deployment() {
