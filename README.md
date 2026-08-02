@@ -21,6 +21,11 @@
 [![OPA](https://img.shields.io/badge/OPA-1.4_Rego-7D9199?logo=openpolicyagent&logoColor=white)](https://www.openpolicyagent.org/)
 [![Ed25519](https://img.shields.io/badge/Signatures-Ed25519-B197FC)](https://ed25519.cr.yp.to/)
 
+[![Model](https://img.shields.io/badge/Advisory_model-Mistral_Small_3.2_24B-FF7000?logo=ollama&logoColor=white)](#model)
+[![Warm underwriting](https://img.shields.io/badge/Underwriting-~40s_warm-2f9e44)](#latency)
+[![Cold start](https://img.shields.io/badge/Cold_start-~5.5_min-e8590c)](#latency)
+[![Model sets amounts](https://img.shields.io/badge/Model_sets_amounts-never-1c7ed6)](#decision-quality-from-a-real-run)
+
 [![Backend tests](https://img.shields.io/badge/pytest-261_passing-2f9e44)](tests/)
 [![Frontend tests](https://img.shields.io/badge/vitest-72_passing-2f9e44)](frontend/)
 [![Rego tests](https://img.shields.io/badge/OPA_policy-9_passing-2f9e44)](credence/policy/rego/)
@@ -89,6 +94,23 @@ approval.**
 A fresh browser session gets its own tenant. Nothing you enter is visible to
 anyone else's session, and cross-tenant reads fail with `CROSS_TENANT_EVIDENCE`
 rather than returning empty.
+
+> [!IMPORTANT]
+> **The first underwriting run of the day takes about 5½ minutes. Later ones
+> take about 40 seconds.**
+>
+> Underwriting makes a real call to a 24B model on a GPU that scales to zero, so
+> nothing is paid for while nobody is using it. Waking it costs **258 s to load
+> the weights and 76 s of warmup** before it can answer. The request timeout is
+> set to 600 s to accommodate that, so a cold request completes rather than
+> failing — but it does take the full time, and the button will sit and spin.
+>
+> Click any scenario on [`/judge-demo`](https://credence-web-ppmafqinnq-as.a.run.app/judge-demo)
+> and leave it, then come back: everything after that is warm.
+>
+> If the model cannot be reached at all, underwriting returns
+> `AI_EVIDENCE_CHECKS_UNAVAILABLE` and the application goes to
+> `HUMAN_REVIEW_REQUIRED`. A model failure never produces an approval.
 
 ## What is built
 
@@ -287,6 +309,73 @@ Money conservation, waterfall ordering, passport rejection paths, cross-tenant
 isolation, audit-chain tamper detection and the redaction patterns all have
 tests. See [`docs/REQUIREMENTS_MATRIX.md`](docs/REQUIREMENTS_MATRIX.md) for the
 requirement → code → test mapping.
+
+## Measured on the live deployment
+
+Every number below was recorded against the deployed sandbox on 2 August 2026,
+commit `d2a9393`, region `asia-southeast1`. None of it is estimated. The full
+transcript is in
+[`docs/FIRST_RUN_ONBOARDING_TEST.md`](docs/FIRST_RUN_ONBOARDING_TEST.md).
+
+### Latency
+
+| Operation | Time |
+|---|---|
+| Model cold start — weights loaded | **258.3 s** |
+| Model cold start — warmup | **75.9 s** |
+| **Cold start, total to serving** | **≈ 334 s** |
+| Underwriting, warm model | **35–45 s** |
+| Judge-demo scenario, warm, end to end | **36.2 – 45.7 s** |
+| Every other write and read | **< 1 s** |
+| Cloud Run request timeout (web, api, inference) | 600 s |
+
+All six judge-demo scenarios, warm, one run each:
+
+| Scenario | Result | Time |
+|---|---|---|
+| A · Happy path | `A_HAPPY_PATH` | 38.9 s |
+| B · Overspend | `B_OVERSPEND_BLOCKED` | 42.9 s |
+| C · Unknown vendor | `C_UNAPPROVED_VENDOR_BLOCKED` | 36.7 s |
+| D · Split payments | `D_SPLIT_PAYMENT_DETECTED` | 45.7 s |
+| E · Kill switch | `E_OWNER_KILL_SWITCH` | 42.1 s |
+| F · Task failure | `F_TASK_FAILURE_BOUNDED_RECOVERY` | 36.2 s |
+
+### Model
+
+| | |
+|---|---|
+| Model | `mistral-small3.2:24b-instruct-2506-q4_K_M` |
+| Quantisation | Q4_K_M |
+| VRAM resident | 15 098 MiB |
+| Accelerator | 1 × NVIDIA L4 |
+| Scaling | min 0, max 1 — nothing is paid for while idle |
+| Reachable from the browser | **No.** Internal ingress only; the URL is never exposed to a client |
+
+### Decision quality, from a real run
+
+| | |
+|---|---|
+| Model output schema valid | `true` |
+| Claims traced to stored evidence | 5 supported / 0 unsupported |
+| **Amounts influenced by the model** | **`false`** — every figure comes from the deterministic engine |
+| Deterministic maximum | 100 000 paise, bound by `task_cost_cap_minor` |
+| Reviewer attempt to exceed that maximum | rejected, `422` |
+| Repayment waterfall on ₹1 500.00 | `100000` principal + `5000` fee + `45000` owner |
+| Vault after repayment | `principal_outstanding: 0`, `status: REPAID` |
+| Audit chain | `{"intact": true, "first_broken_seq": null}` |
+| Two identical applications | identical receipt hash — the engine is deterministic |
+
+### Live checks
+
+| Path | Checks | Result |
+|---|---|---|
+| Validation and rejection — bad input, redaction, injection, cross-tenant | 23 | all as specified |
+| Approval — underwriting → human review → vault → repayment | 16 | 16 passed |
+
+These ran over HTTP against the public origin and the same BFF proxy the browser
+uses. **No browser was involved** — the Chrome automation available at the time
+could not inject into any page, including `example.com`. React rendering is
+covered only by the 72 frontend unit tests, not by these numbers.
 
 ## What this is *not*
 
