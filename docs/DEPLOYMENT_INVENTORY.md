@@ -23,11 +23,22 @@ a **real Git commit SHA tag** that resolves in this repository. In each case the
 `latest` tag points at a *different* digest, which is the proof that the
 deployment is not following a mutable tag.
 
+Redeployed 2 August 2026 from commit `2210207`, which is the first deployment
+that contains the fixes in this audit.
+
 | Service | Revision | Commit SHA tag | Deployed digest | `latest` points to |
 |---|---|---|---|---|
-| `credence-web` | `credence-web-00003-65n` | `c7ca0f4db083d0e8c2347bfc76e758beae2cd372` | `sha256:2dd1501af05d…20bc4a` | `sha256:31fc8f28…` (different) |
-| `credence-api` | `credence-api-00007-7c8` | `634857f4974482aeeb9fc7d3906f9157994b117b` | `sha256:008d002c8bf8…603397` | `sha256:fff87fa2…` (different) |
+| `credence-web` | `credence-web-00004-2ws` | `22102070242a4819f601e03fc84c8cc803c9e07c` | `sha256:2ad4d1f67e36…193cb6` | `sha256:31fc8f28…` (different) |
+| `credence-api` | `credence-api-00008-4gx` | `22102070242a4819f601e03fc84c8cc803c9e07c` | `sha256:066c08a94dc4…5f677e` | `sha256:fff87fa2…` (different) |
 | `credence-inference` | `credence-inference-00004-fn4` | `634857f4974482aeeb9fc7d3906f9157994b117b` | `sha256:e6e47450f8f4…f41ca` | `sha256:99abd95d…` (different) |
+
+`credence-inference` was **not** rebuilt: commit `2210207` changes no inference
+code, so redeploying it would have produced a new digest with identical
+behaviour and a ~350s cold start for nothing. It still runs the digest this
+audit verified.
+
+The previous revisions were `credence-web-00003-65n` (`c7ca0f4d…`) and
+`credence-api-00007-7c8` (`634857f4…`).
 
 Both SHAs resolve to real commits:
 

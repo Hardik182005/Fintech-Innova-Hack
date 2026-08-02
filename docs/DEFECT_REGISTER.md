@@ -25,6 +25,7 @@ tests pass, `tsc --noEmit` clean.**
 | D-4 | Medium — false claim | Advertised model | Fixed |
 | D-6 | Low — cosmetic | Stray "Unknown" chip | Fixed, 2 assertions |
 | S-2 | Medium — defence in depth | `allUsers` invoker on the API | **Open, not applied** |
+| S-3 | High — credential exposure | Cloud SQL password committed in `infra/*.tfplan` | **Partly fixed — rotation and history still open** |
 | P-1 | High — availability | Evaluation concurrency | **Bounded, not resolved** |
 | H-1 | — honesty | n=3 renders as a bare 100% | **Open, no fix** |
 | D-8 | — | Pre-funded vault balance | **Withdrawn — not a defect** |
@@ -301,6 +302,46 @@ the `credence-web` runtime service account instead.
 
 **Not applied.** It is an IAM change on a live service and outside what was
 authorised for this audit.
+
+## S-3 — the Cloud SQL password is committed in `infra/*.tfplan` — **partly fixed**
+
+Found while auditing what a push to GitHub would publish.
+
+`infra/stage1.tfplan` and `infra/stage2.tfplan` were tracked in git. A saved
+Terraform plan is not a summary of a plan — it is a zip containing `tfplan`,
+`tfstate`, and `tfstate-prev`, and the embedded state holds resolved values.
+Inside both:
+
+```
+"password": "r1w7b5MnOGIQpGhPSjcNXH0OdRGdCdg3"
+```
+
+That is `random_password.db.result` — the live Cloud SQL database password, in
+plaintext. `.gitignore` covered `*.tfstate` and `*.tfvars` but not `*.tfplan`,
+so the rule that was meant to stop exactly this had a gap the plan files fit
+through.
+
+**Exposure.** The repository is private (an anonymous GitHub API request returns
+404), so the exposure is to whoever can read the repo, not the public. The files
+were added in commit `27d5563` and were already on `origin/main` before this
+audit began.
+
+**What was fixed.** `*.tfplan` added to `.gitignore`, both files untracked, so
+they are gone from `HEAD` and from every future clone's working tree.
+
+**What is still open, and needs a decision that is not mine to make:**
+
+1. **The password is still in git history.** Removing it means rewriting history
+   on `main` and force-pushing — destructive, and it invalidates every existing
+   clone. Not done.
+2. **The password should be rotated regardless.** History rewriting does not
+   help if a copy was already fetched, and rotation is the only action that
+   actually revokes the credential. It is a live infrastructure change on a
+   running database and was not authorised.
+
+Until (2) happens, treat that password as compromised. In particular, **do not
+make this repository public** — that would convert a private-repo exposure into
+a public one, and hackathon repositories are routinely opened up for judging.
 
 ## H-1 — n=3 renders as a bare 100% — **open, no fix applied**
 

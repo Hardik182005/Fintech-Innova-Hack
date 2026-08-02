@@ -30,8 +30,8 @@ hallucinations", "fully secure", "production ready", "guaranteed repayment".
 
 | Service | Revision | Commit SHA | Digest |
 |---|---|---|---|
-| `credence-web` (public) | `credence-web-00003-65n` | `c7ca0f4db083d0e8c2347bfc76e758beae2cd372` | `sha256:2dd1501af05d…20bc4a` |
-| `credence-api` (internal) | `credence-api-00007-7c8` | `634857f4974482aeeb9fc7d3906f9157994b117b` | `sha256:008d002c8bf8…603397` |
+| `credence-web` (public) | `credence-web-00004-2ws` | `22102070242a4819f601e03fc84c8cc803c9e07c` | `sha256:2ad4d1f67e36…193cb6` |
+| `credence-api` (internal) | `credence-api-00008-4gx` | `22102070242a4819f601e03fc84c8cc803c9e07c` | `sha256:066c08a94dc4…5f677e` |
 | `credence-inference` (private, L4) | `credence-inference-00004-fn4` | `634857f4974482aeeb9fc7d3906f9157994b117b` | `sha256:e6e47450f8f4…f41ca` |
 
 Public URL: `https://credence-web-ppmafqinnq-as.a.run.app`
@@ -215,20 +215,30 @@ This is a defensible sandbox choice — it keeps the corpus reproducible — but
 product **must not be described as an operator console**. `docs/DATA_INPUT_MAP.md`
 exists so no report can imply otherwise.
 
-## 11. The most important caveat
+## 11. Deployment status of these fixes
 
-**The deployed site does not contain any fix in this report.** All changes are in
-the working tree. The clearest proof: the live site still renders the
-**pgvector** claim in three places, because `frontend/components/deployment.tsx`
-is modified locally and uncommitted.
+**Superseded.** This section previously said no fix in this report was deployed.
+That was true when the audit was written and is no longer true.
 
-**No statement in any of these reports should be read as describing the
-currently deployed site.** They describe the audited codebase.
+Commit `2210207` was pushed to `main` and both application services were
+rebuilt and redeployed on 2 August 2026, by digest, from an image tagged with
+that commit SHA. Re-verified against the live public HTML afterwards:
 
-Per the standing constraint, the repository's own hourly auto-commit process
-owns committing; I have not committed or pushed. When redeployment happens it
-must follow the rule this audit verified is already in force: build, tag with
-the truthful commit SHA, deploy **by digest**, never `:latest`.
+| String | Before | After |
+|---|---:|---:|
+| `pgvector` | 8 | **0** |
+| `Open Policy Agent` | present in 6 places | **0** |
+| `Live Production` / `production ready` | 0 | 0 |
+| `qwen3` | 0 | 0 |
+| `Rego rule set` (the truthful replacement) | — | 8 |
+
+`credence-inference` was deliberately not rebuilt — the commit changes no
+inference code — so it still runs the digest this audit verified.
+
+Two open findings are unchanged by the redeployment: **H-1** (n=3 metrics render
+as a bare 100%) and **S-2** (`allUsers` invoker binding on `credence-api`,
+blocked today only by `ingress=internal`). **P-1** remains bounded, not resolved.
+A new finding, **S-3**, was opened during the push — see the defect register.
 
 ## 12. Report index
 
