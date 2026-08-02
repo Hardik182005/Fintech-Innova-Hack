@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { CANNED, SYSTEM_PROMPT, factFallback } from "@/lib/orb-knowledge";
+import { CANNED, buildPrompt, factFallback } from "@/lib/orb-knowledge";
 
 /**
  * The page assistant.
@@ -20,10 +20,20 @@ import { CANNED, SYSTEM_PROMPT, factFallback } from "@/lib/orb-knowledge";
 const DEFAULT_MODEL = "gemma3:4b";
 const DEFAULT_OLLAMA = "http://localhost:11434";
 
-/** A visitor waits a couple of seconds for a chat bubble, not a minute. If the
- *  model has not answered by then the fact fallback is a better response than a
- *  spinner, so the deadline is short and failure is not an error state. */
-const MODEL_TIMEOUT_MS = 12_000;
+/**
+ * How long the model gets before the facts answer instead.
+ *
+ * Measured rather than guessed: gemma3:4b warm on a CPU-only dev box returns a
+ * three-sentence reply in about 8.5s, and roughly 21s on the request that loads
+ * it. 25s covers the warm case with margin and still gives up on the cold one
+ * rather than leaving a chat bubble spinning — the fact fallback is a real
+ * answer, so timing out costs correctness nothing.
+ */
+const MODEL_TIMEOUT_MS = 25_000;
+
+/** Ollama unloads an idle model and then pays the load cost again on the next
+ *  message. A visitor's second question should not be slower than their first. */
+const KEEP_ALIVE = "30m";
 
 /** Long enough for a real question, short enough that the prompt cannot be
  *  padded with instructions until the grounding rules fall out of context. */
@@ -70,16 +80,18 @@ async function askModel(message: string): Promise<string | null> {
       body: JSON.stringify({
         model: orbModel(),
         stream: false,
+        keep_alive: KEEP_ALIVE,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: buildPrompt(message) },
           { role: "user", content: message },
         ],
         options: {
           // Low temperature because the job is recall of supplied facts, not
-          // invention; a small num_predict keeps the reply to the two or three
-          // sentences the system prompt asks for even if the model rambles.
+          // invention; num_predict enforces the two or three sentences the
+          // system prompt asks for even when the model wants to keep going,
+          // and on a CPU box every token past that is latency a visitor feels.
           temperature: 0.3,
-          num_predict: 220,
+          num_predict: 140,
           num_ctx: 4096,
         },
       }),

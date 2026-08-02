@@ -70,13 +70,55 @@ export const SECTIONS = [
 ] as const;
 
 /** Things the orb must never do, stated to the model as rules rather than tone. */
-export const SYSTEM_PROMPT = `You are the assistant orb on the CredenceAI website. You help visitors understand what this page is about.
+const RULES = `You are the assistant orb on the CredenceAI website. You help visitors understand what this page is about.
 
 Answer ONLY from the facts below. If a question is not covered by them, say plainly that you do not know and point the visitor at the relevant section of the page. Never invent a feature, a number, a partner, a customer, a price, or a compliance claim.
 
 Never say CredenceAI is production ready, fully secure, guaranteed, or 100% accurate. Never state that Open Policy Agent authorises spends — the deployed evaluator is an in-process mirror of the Rego bundle. Never offer financial or investment advice. If asked for account, balance, or personal data, explain you have no access to any of it.
 
-Keep replies to two or three sentences. Be warm and direct. Plain text only — no markdown, no bullet points, no headings.
+Keep replies to two or three sentences. Be warm and direct. Plain text only — no markdown, no bullet points, no headings.`;
+
+/**
+ * The prompt for one question.
+ *
+ * Sending all ten facts every time costs about 440 tokens of prompt evaluation,
+ * which on a CPU-only box is over twenty seconds before the model writes a
+ * single word. Selecting the relevant ones cuts that to a fraction, and the
+ * sandbox disclosure is pinned in regardless of the question — the one fact a
+ * visitor is entitled to see whether or not they asked for it.
+ */
+export function buildPrompt(message: string): string {
+  const q = message.toLowerCase();
+  const scored = FACTS.map((f) => ({
+    fact: f,
+    score: f.topic
+      .split(" ")
+      .concat(f.text.toLowerCase().split(/\W+/))
+      .filter((w) => w.length > 4 && q.includes(w)).length,
+  }));
+
+  const chosen = scored
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+    .map((s) => s.fact);
+
+  // No keyword hit means an open-ended question ("what is this?"), where the
+  // overview facts are the right context rather than nothing at all.
+  const base = chosen.length > 0 ? chosen : [FACTS[0], FACTS[6]];
+  const pinned = FACTS.find((f) => f.topic === "sandbox")!;
+  const facts = base.includes(pinned) ? base : [...base, pinned];
+
+  return `${RULES}
+
+FACTS:
+${facts.map((f) => `- ${f.topic}: ${f.text}`).join("\n")}
+
+PAGE SECTIONS you may point to: ${SECTIONS.map((s) => `${s.label} (${s.href})`).join(", ")}`;
+}
+
+/** The full-grounding form, kept for tests that assert on the rules themselves. */
+export const SYSTEM_PROMPT = `${RULES}
 
 FACTS:
 ${FACTS.map((f) => `- ${f.topic}: ${f.text}`).join("\n")}
@@ -131,7 +173,8 @@ export function factFallback(message: string): string | null {
   if (hit("policy", "rego", "opa", "authoris", "authoriz")) return topic("policy");
   if (hit("model", "llm", "mistral", "ai ", "hallucinat")) return topic("ai role");
   if (hit("audit", "trace", "ledger", "chain")) return topic("audit");
-  if (hit("sandbox", "real money", "licens", "regulat", "legal")) return topic("sandbox");
+  if (hit("sandbox", "real money", "licens", "regulat", "legal", "safe", "risk", "lose"))
+    return topic("sandbox");
   if (hit("accur", "metric", "how good", "reliab")) return topic("limits");
   if (hit("what", "who", "explain", "about", "credence", "do")) return topic("what it is");
   return null;

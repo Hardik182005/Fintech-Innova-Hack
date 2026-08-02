@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CANNED, FACTS, SYSTEM_PROMPT, factFallback } from "./orb-knowledge";
+import { CANNED, FACTS, SYSTEM_PROMPT, buildPrompt, factFallback } from "./orb-knowledge";
 
 /**
  * The orb is the one surface on this site that emits prose nobody reviewed
@@ -66,6 +66,36 @@ describe("grounding", () => {
 
   it("keeps the model advisory", () => {
     expect(FACTS.find((f) => f.topic === "ai role")!.text).toContain("never decide an amount");
+  });
+});
+
+describe("prompt selection", () => {
+  it("always carries the rules, whatever facts it selects", () => {
+    for (const q of ["what is a vault?", "hello", "qwertyuiop"]) {
+      const p = buildPrompt(q);
+      expect(p, q).toMatch(/Never state that Open Policy Agent authorises spends/);
+      expect(p, q).toMatch(/Answer ONLY from the facts below/);
+    }
+  });
+
+  it("pins the sandbox disclosure into every prompt, asked for or not", () => {
+    // A visitor asking about repayment is still entitled to know none of it is
+    // real money, so this fact is not allowed to be selected away.
+    for (const q of ["how does repayment work?", "tell me about the passport", "xyzzy"]) {
+      expect(buildPrompt(q), q).toContain("not a licensed lender");
+    }
+  });
+
+  it("sends the relevant facts rather than all of them", () => {
+    const p = buildPrompt("how does repayment work?");
+    expect(p).toContain("outstanding principal first");
+    // Latency is the reason this function exists: the full set costs ~440
+    // prompt tokens, which is over 20s on a CPU box before a word is written.
+    expect(p.length).toBeLessThan(SYSTEM_PROMPT.length);
+  });
+
+  it("still grounds an open-ended question", () => {
+    expect(buildPrompt("what is this?")).toContain("autonomous agents");
   });
 });
 
