@@ -9,6 +9,7 @@
 [![Live sandbox](https://img.shields.io/badge/Live_sandbox-credence--web-0b7285?style=for-the-badge&logo=googlecloud&logoColor=white)](https://credence-web-ppmafqinnq-as.a.run.app)
 [![Start here](https://img.shields.io/badge/Start_here-first_run_wizard-1864ab?style=for-the-badge)](https://credence-web-ppmafqinnq-as.a.run.app/start)
 [![Judge demo](https://img.shields.io/badge/Judge_demo-six_scenarios-5f3dc4?style=for-the-badge)](https://credence-web-ppmafqinnq-as.a.run.app/judge-demo)
+[![Presentation Deck](https://img.shields.io/badge/Presentation_Deck-Team_Kryptonite_PPT-d9480f?style=for-the-badge&logo=adobeacrobatreader&logoColor=white)](CredenceAI_Team_Kryptonite_PPT.pdf)
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
