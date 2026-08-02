@@ -1,0 +1,12 @@
+# Build context uploaded to Cloud Build for the credence-web image.
+#
+# gcloud falls back to .gitignore semantics without this file, which would
+# upload node_modules and the local .next cache — hundreds of megabytes the
+# image build discards anyway, since the Dockerfile installs from the
+# lockfile and builds fresh.
+node_modules
+.next
+.env
+.env.*
+!.env.example
+*.png
