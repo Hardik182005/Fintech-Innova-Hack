@@ -341,6 +341,7 @@ class OllamaGateway:
         self._reasoning_model = settings.ollama_critic_model
         self._timeout = settings.model_timeout_seconds
         self._max_tokens = settings.model_max_output_tokens
+        self._context_tokens = settings.model_context_tokens
         self._use_oidc = settings.inference_use_oidc
         self._max_retries = settings.model_max_retries
         self._breaker = _CircuitBreaker(
@@ -377,7 +378,11 @@ class OllamaGateway:
             "stream": False,
             "think": False,
             "format": schema,
-            "options": {"num_predict": self._max_tokens, "temperature": 0},
+            "options": {
+                "num_predict": self._max_tokens,
+                "num_ctx": self._context_tokens,
+                "temperature": 0,
+            },
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},

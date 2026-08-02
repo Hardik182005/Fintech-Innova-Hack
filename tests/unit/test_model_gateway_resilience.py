@@ -274,6 +274,27 @@ def test_structure_survives_the_strip(model):
     assert schema.get("required") == model.model_json_schema().get("required")
 
 
+def test_request_carries_the_configured_context_window(monkeypatch):
+    """Setting OLLAMA_CONTEXT_LENGTH=8192 on the inference container was not
+    enough: Ollama overrode it with a VRAM-derived default of 4096 and served
+    half the intended window, truncating evidence with no error anywhere. The
+    per-request option is the one that actually decides."""
+    captured: dict = {}
+
+    def _post(url, *a, **kw):
+        captured["payload"] = kw["json"]
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(_ANALYSIS)}},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", _post)
+    OllamaGateway(_settings(model_context_tokens=8192)).analyze_task("t", {"ev_1": "text"})
+
+    assert captured["payload"]["options"]["num_ctx"] == 8192
+
+
 def test_length_is_still_enforced_on_the_response():
     """Stripping the bound from the grammar must not weaken validation: the
     application, not the decoder, is what keeps an over-long summary out."""

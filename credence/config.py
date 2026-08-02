@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     ollama_embedding_model: str = "qwen3-embedding:0.6b"
     model_timeout_seconds: float = 120.0
     model_max_output_tokens: int = 1024
+    # Serving context window, sent per request. Setting OLLAMA_CONTEXT_LENGTH
+    # on the inference container is not sufficient: Ollama overrode it with a
+    # VRAM-derived default of 4096, which truncates evidence bundles without
+    # any error. Must match the inference container's value or the first
+    # request forces a model reload.
+    model_context_tokens: int = 8192
 
     # Cloud Run inference is private (ingress=internal) and IAM-protected. The
     # API mints a Google-signed OIDC identity token for this audience rather

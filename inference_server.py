@@ -58,6 +58,12 @@ EXPECTED_DIGEST = os.environ.get("CREDENCE_MODEL_EXPECTED_DIGEST", "").strip()
 # are deliberately separate: they are different bytes and a single variable
 # compared against both can never satisfy more than one of them.
 ARTIFACT_SHA256 = os.environ.get("CREDENCE_MODEL_ARTIFACT_SHA256", "").strip()
+# Serving context window. OLLAMA_CONTEXT_LENGTH alone is not enough: Ollama
+# 0.32 computes a "vram-based default context" and used 4096 despite the
+# variable being set to 8192, silently halving the window. Per-request num_ctx
+# is authoritative, so the warm-up sends it explicitly and the slot is created
+# at the intended size — otherwise the first real request forces a reload.
+CONTEXT_TOKENS = int(os.environ.get("OLLAMA_CONTEXT_LENGTH", "8192"))
 
 # Populated by _startup(); read by /readyz and /version.
 STATE: dict[str, Any] = {
@@ -73,6 +79,7 @@ STATE: dict[str, Any] = {
     "warmup_seconds": None,
     "warmup_schema_valid": False,
     "peak_vram_mib": None,
+    "context_tokens": None,
     "oom_detected": False,
     "started_at": None,
     "ready_at": None,
@@ -253,7 +260,7 @@ def _warmup() -> None:
             "stream": False,
             "think": False,
             "format": schema,
-            "options": {"num_predict": 64, "temperature": 0},
+            "options": {"num_predict": 64, "temperature": 0, "num_ctx": CONTEXT_TOKENS},
             "messages": [
                 {"role": "system", "content": "Reply with JSON only."},
                 {"role": "user", "content": 'Return exactly {"ok": true, "n": 1}.'},
@@ -286,6 +293,16 @@ def _confirm_gpu_execution() -> None:
     size_vram = loaded[0].get("size_vram", 0)
     if not size_vram:
         raise RuntimeError("model loaded with size_vram=0 — CPU-only fallback detected")
+
+    # The slot's real context window, not the one we asked for. A smaller
+    # window does not fail — it silently truncates the evidence bundle, and the
+    # model then reports missing evidence that was in fact supplied.
+    served = loaded[0].get("context_length")
+    STATE["context_tokens"] = served
+    if served is not None and served < CONTEXT_TOKENS:
+        raise RuntimeError(
+            f"model serving n_ctx={served}, below the required {CONTEXT_TOKENS}"
+        )
 
     STATE["gpu_confirmed"] = True
     STATE["peak_vram_mib"] = round(size_vram / (1024 * 1024))
@@ -379,6 +396,7 @@ def readyz() -> Response:
         "model_load_seconds": STATE["model_load_seconds"],
         "warmup_seconds": STATE["warmup_seconds"],
         "peak_vram_mib": STATE["peak_vram_mib"],
+        "context_tokens": STATE["context_tokens"],
         "failure": STATE["failure"],
     }
     return JSONResponse(body, status_code=200 if STATE["ready"] else 503)

@@ -177,3 +177,56 @@ def test_malformed_artifact_uri_is_rejected(monkeypatch, uri: str):
     mod = _load(monkeypatch, CREDENCE_MODEL_GCS_URI=uri)
     with pytest.raises(RuntimeError):
         mod._pull_from_gcs()
+
+
+# --- serving context window -------------------------------------------------
+#
+# OLLAMA_CONTEXT_LENGTH=8192 was set on the container and the running daemon
+# reported it, yet the model loaded with n_ctx=4096: Ollama 0.32 derives a
+# "vram-based default context" that wins. A halved window does not error, it
+# truncates the evidence bundle, so the model reports evidence missing that
+# was supplied. These pin the two things that make it visible.
+
+
+def test_warmup_requests_the_configured_context_window(monkeypatch):
+    """The warm-up creates the slot. If it does not ask for the full window,
+    the first real request has to reload the model to get one."""
+    mod = _load(monkeypatch, CREDENCE_PRIMARY_MODEL="m", OLLAMA_CONTEXT_LENGTH="8192")
+    captured: dict = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"message": {"content": '{"ok": true, "n": 1}'}}
+
+    def _post(url, **kw):
+        captured["options"] = kw["json"]["options"]
+        return _Resp()
+
+    monkeypatch.setattr(mod.httpx, "post", _post)
+    mod._warmup()
+
+    assert captured["options"]["num_ctx"] == 8192
+
+
+def test_a_short_served_context_blocks_readiness(monkeypatch):
+    """Serving 4096 when 8192 was required must fail startup, not warm up
+    quietly and start truncating evidence."""
+    mod = _load(monkeypatch, CREDENCE_PRIMARY_MODEL="m", OLLAMA_CONTEXT_LENGTH="8192")
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "models": [{"name": "m", "size_vram": 15 * 1024**3, "context_length": 4096}]
+            }
+
+    monkeypatch.setattr(mod.httpx, "get", lambda *a, **kw: _Resp())
+
+    with pytest.raises(RuntimeError, match="n_ctx=4096"):
+        mod._confirm_gpu_execution()
+    assert not mod.STATE["gpu_confirmed"]
