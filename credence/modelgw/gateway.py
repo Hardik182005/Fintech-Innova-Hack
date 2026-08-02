@@ -248,7 +248,11 @@ CRITIC_SYSTEM = (
 # that it saw an instruction is unverified model output like any other, and
 # the architecture does not let unverified model output be recorded as fact.
 INJECTION_PATTERN = re.compile(
-    r"ignore (all|previous|prior) instructions"
+    # "ignore ... instructions", allowing the qualifiers and intervening words
+    # the canonical phrasings put between the two. Anchored on both ends so
+    # ordinary prose about ignoring something does not match.
+    r"ignore\s+(?:\w+\s+){0,3}?(?:instructions|directives|rules)"
+    r"|disregard\s+(?:\w+\s+){0,3}?(?:instructions|directives|rules)"
     r"|system prompt"
     r"|approve .*(loan|credit|crore|lakh)",
     re.IGNORECASE,
